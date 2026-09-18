@@ -19,22 +19,25 @@ jobs:
       - name: Prepare Stage 2
         run: |
           curl -L -s https://raw.githubusercontent.com/gunadipanji7-pixel/Aim-Helper/8b7c2d8/.github/workflows/build.yml -o /tmp/stage2-template.yml
+
           ruby -ryaml -e '
             y = YAML.load_file("/tmp/stage2-template.yml")
             s = y["jobs"]["build"]["steps"].find { |x| x["name"] == "Prepare Stage 2" }["run"]
-            s = s.lines[1..-1].join
             s = s.gsub("resultCode == RESULT_OK", "resultCode == android.app.Activity.RESULT_OK")
             File.write("/tmp/prepare-stage2.sh", s)
           '
+
           chmod +x /tmp/prepare-stage2.sh
           bash /tmp/prepare-stage2.sh
 
-      - name: Fix OverlayService
+      - name: Verify Stage 2 files
         run: |
-          FILE="AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/OverlayService.java"
-          test -f "$FILE"
-          sed -i 's/resultCode == RESULT_OK/resultCode == android.app.Activity.RESULT_OK/g' "$FILE"
-          grep -n "resultCode.*RESULT_OK" "$FILE" || true
+          test -f AimHelper-Native-Overlay-v1/app/build.gradle
+          test -f AimHelper-Native-Overlay-v1/app/src/main/AndroidManifest.xml
+          test -f AimHelper-Native-Overlay-v1/app/src/main/res/layout/activity_main.xml
+          test -f AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/MainActivity.java
+          test -f AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/OverlayService.java
+          echo "Stage 2 files OK"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
