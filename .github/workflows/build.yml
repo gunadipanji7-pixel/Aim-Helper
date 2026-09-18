@@ -14,1182 +14,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Extract Android project
-        run: unzip -q AimHelper-Native-Overlay-OnlineBuild.zip
-
-      - name: Replace MainActivity
         run: |
-          PROJECT="AimHelper-Native-Overlay-v1"
-          cat > "$PROJECT/app/src/main/java/com/aimhelper/overlay/MainActivity.java" <<'JAVA'
-          package com.aimhelper.overlay;
-
-          import android.app.Activity;
-          import android.content.Intent;
-          import android.net.Uri;
-          import android.os.Bundle;
-          import android.provider.Settings;
-          import android.view.Gravity;
-          import android.widget.Button;
-          import android.widget.LinearLayout;
-          import android.widget.TextView;
-          import android.widget.Toast;
-
-          public class MainActivity extends Activity {
-              int dp(int v){return (int)(v*getResources().getDisplayMetrics().density+.5f);}
-
-              @Override protected void onCreate(Bundle b){
-                  super.onCreate(b);
-
-                  LinearLayout r=new LinearLayout(this);
-                  r.setOrientation(LinearLayout.VERTICAL);
-                  r.setPadding(dp(20),dp(24),dp(20),dp(20));
-
-                  TextView t=new TextView(this);
-                  t.setText("🎯 Aim Helper");
-                  t.setTextSize(28);
-                  t.setGravity(Gravity.CENTER);
-                  r.addView(t,new LinearLayout.LayoutParams(-1,dp(60)));
-
-                  TextView i=new TextView(this);
-                  i.setText("⚪ Bola putih → 🎯 satu bola target → garis bidik\n\nKontrol analog, target bisa digeser, panel kontrol bisa dipindahkan.");
-                  i.setTextSize(16);
-                  r.addView(i,new LinearLayout.LayoutParams(-1,dp(130)));
-
-                  Button p=new Button(this);
-                  p.setText("Izinkan tampil di atas aplikasi");
-
-                  p.setOnClickListener(v->{
-                      if(!Settings.canDrawOverlays(this)){
-                          startActivity(
-                              new Intent(
-                                  Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                  Uri.parse("package:"+getPackageName())
-                              )
-                          );
-                      }else{
-                          Toast.makeText(
-                              this,
-                              "Izin overlay sudah aktif",
-                              Toast.LENGTH_SHORT
-                          ).show();
-                      }
-                  });
-
-                  r.addView(p,new LinearLayout.LayoutParams(-1,dp(55)));
-
-                  Button s=new Button(this);
-                  s.setText("Nyalakan Aim Helper");
-
-                  s.setOnClickListener(v->{
-                      if(!Settings.canDrawOverlays(this)) return;
-
-                      Intent x=new Intent(
-                          this,
-                          OverlayService.class
-                      );
-
-                      if(android.os.Build.VERSION.SDK_INT>=26)
-                          startForegroundService(x);
-                      else
-                          startService(x);
-
-                      moveTaskToBack(true);
-                  });
-
-                  r.addView(s,new LinearLayout.LayoutParams(-1,dp(55)));
-
-                  Button q=new Button(this);
-                  q.setText("Matikan Aim Helper");
-
-                  q.setOnClickListener(
-                      v->stopService(
-                          new Intent(
-                              this,
-                              OverlayService.class
-                          )
-                      )
-                  );
-
-                  r.addView(q,new LinearLayout.LayoutParams(-1,dp(55)));
-
-                  setContentView(r);
-              }
-          }
-          JAVA
-
-      - name: Replace OverlayService
-        run: |
-          PROJECT="AimHelper-Native-Overlay-v1"
-
-          cat > "$PROJECT/app/src/main/java/com/aimhelper/overlay/OverlayService.java" <<'JAVA'
-          package com.aimhelper.overlay;
-
-          import android.app.*;
-          import android.content.*;
-          import android.graphics.*;
-          import android.os.*;
-          import android.provider.Settings;
-          import android.view.*;
-          import android.widget.*;
-
-          public class OverlayService extends Service {
-
-              WindowManager wm;
-              AimView aim;
-
-              View cue;
-              View target;
-              View panel;
-              View joy;
-
-              WindowManager.LayoutParams cueLP;
-              WindowManager.LayoutParams targetLP;
-              WindowManager.LayoutParams panelLP;
-              WindowManager.LayoutParams joyLP;
-
-              static final int HANDLE=72;
-
-              float L,R,T,B;
-              float angle=0;
-
-              @Override
-              public void onCreate(){
-                  super.onCreate();
-
-                  channel();
-                  startForeground(77,notification());
-
-                  wm=(WindowManager)
-                      getSystemService(WINDOW_SERVICE);
-
-                  show();
-              }
-
-              int W(){
-                  return getResources()
-                      .getDisplayMetrics()
-                      .widthPixels;
-              }
-
-              int H(){
-                  return getResources()
-                      .getDisplayMetrics()
-                      .heightPixels;
-              }
-
-              void show(){
-
-                  if(!Settings.canDrawOverlays(this)){
-                      stopSelf();
-                      return;
-                  }
-
-                  int w=W();
-                  int h=H();
-
-                  /*
-                   * Batas area meja.
-                   */
-                  L=w*.17f;
-                  R=w*.86f;
-                  T=h*.16f;
-                  B=h*.94f;
-
-                  /*
-                   * Canvas garis tidak menangkap sentuhan.
-                   */
-                  WindowManager.LayoutParams f=
-                      new WindowManager.LayoutParams(
-                          -1,
-                          -1,
-                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                          WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                              | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                              | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                          PixelFormat.TRANSLUCENT
-                      );
-
-                  f.gravity=
-                      Gravity.TOP|Gravity.START;
-
-                  aim=new AimView(this);
-
-                  wm.addView(
-                      aim,
-                      f
-                  );
-
-                  /*
-                   * Posisi awal bola putih.
-                   */
-                  cueLP=
-                      lp(
-                          w*.54f,
-                          h*.58f
-                      );
-
-                  /*
-                   * Hanya satu bola target.
-                   */
-                  targetLP=
-                      lp(
-                          w*.68f,
-                          h*.58f
-                      );
-
-                  cue=
-                      new Handle(
-                          this,
-                          false
-                      );
-
-                  target=
-                      new Handle(
-                          this,
-                          true
-                      );
-
-                  wm.addView(
-                      cue,
-                      cueLP
-                  );
-
-                  wm.addView(
-                      target,
-                      targetLP
-                  );
-
-                  controls();
-              }
-
-              WindowManager.LayoutParams lp(
-                  float x,
-                  float y
-              ){
-
-                  WindowManager.LayoutParams p=
-                      new WindowManager.LayoutParams(
-                          HANDLE,
-                          HANDLE,
-                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                          PixelFormat.TRANSLUCENT
-                      );
-
-                  p.gravity=
-                      Gravity.TOP|Gravity.START;
-
-                  p.x=
-                      (int)x-HANDLE/2;
-
-                  p.y=
-                      (int)y-HANDLE/2;
-
-                  return p;
-              }
-
-              TextView button(String s){
-
-                  TextView v=
-                      new TextView(this);
-
-                  v.setText(s);
-                  v.setTextColor(Color.WHITE);
-                  v.setTextSize(22);
-                  v.setGravity(Gravity.CENTER);
-
-                  return v;
-              }
-
-              void addButton(
-                  LinearLayout r,
-                  TextView v
-              ){
-
-                  r.addView(
-                      v,
-                      new LinearLayout.LayoutParams(
-                          72,
-                          60
-                      )
-                  );
-              }
-
-              void controls(){
-
-                  LinearLayout r=
-                      new LinearLayout(this);
-
-                  r.setOrientation(
-                      LinearLayout.VERTICAL
-                  );
-
-                  r.setPadding(
-                      6,
-                      6,
-                      6,
-                      6
-                  );
-
-                  r.setBackgroundColor(
-                      0xCC102027
-                  );
-
-                  /*
-                   * Bagian ini bisa disentuh
-                   * untuk memindahkan panel.
-                   */
-                  TextView drag=
-                      button("☰  GESER KONTROL");
-
-                  drag.setTextSize(14);
-
-                  r.addView(
-                      drag,
-                      new LinearLayout.LayoutParams(
-                          -1,
-                          48
-                      )
-                  );
-
-                  LinearLayout row1=
-                      new LinearLayout(this);
-
-                  LinearLayout row2=
-                      new LinearLayout(this);
-
-                  row1.setGravity(
-                      Gravity.CENTER
-                  );
-
-                  row2.setGravity(
-                      Gravity.CENTER
-                  );
-
-                  TextView up=
-                      button("▲");
-
-                  TextView left=
-                      button("◀");
-
-                  TextView right=
-                      button("▶");
-
-                  TextView down=
-                      button("▼");
-
-                  TextView rotL=
-                      button("↶");
-
-                  TextView rotR=
-                      button("↷");
-
-                  addButton(row1,up);
-                  addButton(row1,left);
-                  addButton(row1,right);
-                  addButton(row1,down);
-
-                  addButton(row2,rotL);
-                  addButton(row2,rotR);
-
-                  r.addView(row1);
-                  r.addView(row2);
-
-                  up.setOnClickListener(
-                      v->move(0,-12)
-                  );
-
-                  down.setOnClickListener(
-                      v->move(0,12)
-                  );
-
-                  left.setOnClickListener(
-                      v->move(-12,0)
-                  );
-
-                  right.setOnClickListener(
-                      v->move(12,0)
-                  );
-
-                  rotL.setOnClickListener(
-                      v->{
-                          angle-=3;
-                          aim.invalidate();
-                      }
-                  );
-
-                  rotR.setOnClickListener(
-                      v->{
-                          angle+=3;
-                          aim.invalidate();
-                      }
-                  );
-
-                  panel=r;
-
-                  panelLP=
-                      new WindowManager.LayoutParams(
-                          330,
-                          185,
-                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                              | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-                          PixelFormat.TRANSLUCENT
-                      );
-
-                  panelLP.gravity=
-                      Gravity.TOP|Gravity.END;
-
-                  panelLP.x=10;
-                  panelLP.y=65;
-
-                  wm.addView(
-                      panel,
-                      panelLP
-                  );
-
-                  /*
-                   * Geser seluruh panel.
-                   */
-                  drag.setOnTouchListener(
-                      new View.OnTouchListener(){
-
-                          float sx,sy;
-                          int px,py;
-
-                          public boolean onTouch(
-                              View v,
-                              MotionEvent e
-                          ){
-
-                              if(
-                                  e.getAction()
-                                      ==MotionEvent.ACTION_DOWN
-                              ){
-
-                                  sx=e.getRawX();
-                                  sy=e.getRawY();
-
-                                  px=panelLP.x;
-                                  py=panelLP.y;
-
-                                  return true;
-                              }
-
-                              if(
-                                  e.getAction()
-                                      ==MotionEvent.ACTION_MOVE
-                              ){
-
-                                  panelLP.x=
-                                      Math.max(
-                                          0,
-                                          Math.min(
-                                              W()-330,
-                                              px+(int)(
-                                                  sx-e.getRawX()
-                                              )
-                                          )
-                                      );
-
-                                  panelLP.y=
-                                      Math.max(
-                                          0,
-                                          Math.min(
-                                              H()-185,
-                                              py+(int)(
-                                                  e.getRawY()-sy
-                                              )
-                                          )
-                                      );
-
-                                  wm.updateViewLayout(
-                                      panel,
-                                      panelLP
-                                  );
-
-                                  return true;
-                              }
-
-                              return true;
-                          }
-                      }
-                  );
-
-                  /*
-                   * Analog besar.
-                   */
-                  joy=
-                      button("●");
-
-                  joy.setTextSize(36);
-
-                  joy.setBackgroundColor(
-                      0x551FFFFFF
-                  );
-
-                  joyLP=
-                      new WindowManager.LayoutParams(
-                          170,
-                          170,
-                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                              | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-                          PixelFormat.TRANSLUCENT
-                      );
-
-                  joyLP.gravity=
-                      Gravity.BOTTOM|Gravity.START;
-
-                  joyLP.x=20;
-                  joyLP.y=20;
-
-                  wm.addView(
-                      joy,
-                      joyLP
-                  );
-
-                  joy.setOnTouchListener(
-                      new View.OnTouchListener(){
-
-                          float sx,sy;
-
-                          public boolean onTouch(
-                              View v,
-                              MotionEvent e
-                          ){
-
-                              if(
-                                  e.getAction()
-                                      ==MotionEvent.ACTION_DOWN
-                              ){
-
-                                  sx=e.getRawX();
-                                  sy=e.getRawY();
-
-                                  return true;
-                              }
-
-                              if(
-                                  e.getAction()
-                                      ==MotionEvent.ACTION_MOVE
-                              ){
-
-                                  int dx=
-                                      (int)(
-                                          e.getRawX()-sx
-                                      );
-
-                                  int dy=
-                                      (int)(
-                                          e.getRawY()-sy
-                                      );
-
-                                  move(dx,dy);
-
-                                  sx=e.getRawX();
-                                  sy=e.getRawY();
-
-                                  return true;
-                              }
-
-                              return true;
-                          }
-                      }
-                  );
-              }
-
-              void move(
-                  int x,
-                  int y
-              ){
-
-                  targetLP.x=
-                      Math.max(
-                          (int)L-HANDLE/2,
-                          Math.min(
-                              (int)R-HANDLE/2,
-                              targetLP.x+x
-                          )
-                      );
-
-                  targetLP.y=
-                      Math.max(
-                          (int)T-HANDLE/2,
-                          Math.min(
-                              (int)B-HANDLE/2,
-                              targetLP.y+y
-                          )
-                      );
-
-                  wm.updateViewLayout(
-                      target,
-                      targetLP
-                  );
-
-                  aim.invalidate();
-              }
-
-              /*
-               * Penanda target yang bisa digeser.
-               */
-              class Handle extends View{
-
-                  Paint p=
-                      new Paint(1);
-
-                  boolean targetBall;
-
-                  float sx,sy;
-                  int px,py;
-
-                  Handle(
-                      Context c,
-                      boolean t
-                  ){
-
-                      super(c);
-
-                      targetBall=t;
-
-                      setBackgroundColor(
-                          Color.TRANSPARENT
-                      );
-                  }
-
-                  protected void onDraw(
-                      Canvas c
-                  ){
-
-                      /*
-                       * Bola putih tidak diberi
-                       * lingkaran.
-                       */
-                      if(!targetBall)
-                          return;
-
-                      /*
-                       * Hanya satu penanda.
-                       */
-                      p.setStyle(
-                          Paint.Style.STROKE
-                      );
-
-                      p.setStrokeWidth(3);
-
-                      p.setColor(
-                          Color.WHITE
-                      );
-
-                      c.drawCircle(
-                          getWidth()/2f,
-                          getHeight()/2f,
-                          24,
-                          p
-                      );
-                  }
-
-                  public boolean onTouchEvent(
-                      MotionEvent e
-                  ){
-
-                      if(!targetBall)
-                          return true;
-
-                      if(
-                          e.getAction()
-                              ==MotionEvent.ACTION_DOWN
-                      ){
-
-                          sx=e.getRawX();
-                          sy=e.getRawY();
-
-                          px=targetLP.x;
-                          py=targetLP.y;
-
-                          return true;
-                      }
-
-                      if(
-                          e.getAction()
-                              ==MotionEvent.ACTION_MOVE
-                      ){
-
-                          targetLP.x=
-                              Math.max(
-                                  (int)L-HANDLE/2,
-                                  Math.min(
-                                      (int)R-HANDLE/2,
-                                      px+(int)(
-                                          e.getRawX()-sx
-                                      )
-                                  )
-                              );
-
-                          targetLP.y=
-                              Math.max(
-                                  (int)T-HANDLE/2,
-                                  Math.min(
-                                      (int)B-HANDLE/2,
-                                      py+(int)(
-                                          e.getRawY()-sy
-                                      )
-                                  )
-                              );
-
-                          wm.updateViewLayout(
-                              target,
-                              targetLP
-                          );
-
-                          aim.invalidate();
-
-                          return true;
-                      }
-
-                      return true;
-                  }
-              }
-
-              /*
-               * Canvas garis bidik.
-               */
-              class AimView extends View{
-
-                  Paint p=
-                      new Paint(1);
-
-                  AimView(Context c){
-                      super(c);
-                      p.setStrokeCap(
-                          Paint.Cap.ROUND
-                      );
-                  }
-
-                  protected void onDraw(
-                      Canvas c
-                  ){
-
-                      float cx=
-                          cueLP.x+HANDLE/2f;
-
-                      float cy=
-                          cueLP.y+HANDLE/2f;
-
-                      float tx=
-                          targetLP.x+HANDLE/2f;
-
-                      float ty=
-                          targetLP.y+HANDLE/2f;
-
-                      /*
-                       * Garis putih:
-                       * bola putih → target.
-                       */
-                      float vx=
-                          tx-cx;
-
-                      float vy=
-                          ty-cy;
-
-                      float len=
-                          (float)Math.hypot(
-                              vx,
-                              vy
-                          );
-
-                      if(len<1)
-                          return;
-
-                      float ux=
-                          vx/len;
-
-                      float uy=
-                          vy/len;
-
-                      p.setStyle(
-                          Paint.Style.STROKE
-                      );
-
-                      p.setStrokeWidth(5);
-
-                      p.setColor(
-                          Color.WHITE
-                      );
-
-                      c.drawLine(
-                          cx+ux*18,
-                          cy+uy*18,
-                          tx-ux*18,
-                          ty-uy*18,
-                          p
-                      );
-
-                      /*
-                       * Arah pantulan.
-                       */
-                      float dx=
-                          (float)Math.cos(
-                              Math.toRadians(angle)
-                          );
-
-                      float dy=
-                          (float)Math.sin(
-                              Math.toRadians(angle)
-                          );
-
-                      Hit h=
-                          hit(
-                              tx,
-                              ty,
-                              dx,
-                              dy
-                          );
-
-                      /*
-                       * Target → pantulan.
-                       */
-                      p.setStrokeWidth(4);
-
-                      p.setColor(
-                          0xFF39F27A
-                      );
-
-                      c.drawLine(
-                          tx,
-                          ty,
-                          h.x,
-                          h.y,
-                          p
-                      );
-
-                      /*
-                       * Pantulan lanjutan.
-                       */
-                      float rx=dx;
-                      float ry=dy;
-
-                      for(
-                          int i=0;
-                          i<3;
-                          i++
-                      ){
-
-                          if(
-                              h.s==1 ||
-                              h.s==3
-                          )
-                              rx=-rx;
-
-                          if(
-                              h.s==2 ||
-                              h.s==4
-                          )
-                              ry=-ry;
-
-                          Hit n=
-                              hit(
-                                  h.x,
-                                  h.y,
-                                  rx,
-                                  ry
-                              );
-
-                          p.setColor(
-                              Color.WHITE
-                          );
-
-                          p.setStrokeWidth(3);
-
-                          dash(
-                              c,
-                              h.x,
-                              h.y,
-                              n.x,
-                              n.y
-                          );
-
-                          h=n;
-                      }
-
-                      /*
-                       * Titik pantul terakhir.
-                       */
-                      p.setColor(
-                          Color.YELLOW
-                      );
-
-                      p.setStrokeWidth(2);
-
-                      c.drawCircle(
-                          h.x,
-                          h.y,
-                          8,
-                          p
-                      );
-
-                      /*
-                       * Satu penanda target.
-                       */
-                      p.setColor(
-                          Color.WHITE
-                      );
-
-                      p.setStrokeWidth(3);
-
-                      c.drawCircle(
-                          tx,
-                          ty,
-                          24,
-                          p
-                      );
-                  }
-
-                  void dash(
-                      Canvas c,
-                      float x1,
-                      float y1,
-                      float x2,
-                      float y2
-                  ){
-
-                      float dx=x2-x1;
-                      float dy=y2-y1;
-
-                      float l=
-                          (float)Math.hypot(
-                              dx,
-                              dy
-                          );
-
-                      if(l<1)
-                          return;
-
-                      float ux=dx/l;
-                      float uy=dy/l;
-
-                      for(
-                          float d=0;
-                          d<l;
-                          d+=24
-                      ){
-
-                          c.drawLine(
-                              x1+ux*d,
-                              y1+uy*d,
-                              x1+ux*Math.min(d+12,l),
-                              y1+uy*Math.min(d+12,l),
-                              p
-                          );
-                      }
-                  }
-
-                  Hit hit(
-                      float x,
-                      float y,
-                      float dx,
-                      float dy
-                  ){
-
-                      float best=
-                          Float.MAX_VALUE;
-
-                      float hx=x;
-                      float hy=y;
-
-                      int s=0;
-
-                      if(dx>0.0001f){
-
-                          float t=
-                              (R-x)/dx;
-
-                          if(
-                              t>0 &&
-                              t<best
-                          ){
-
-                              best=t;
-                              hx=x+dx*t;
-                              hy=y+dy*t;
-                              s=3;
-                          }
-                      }
-
-                      if(dx<-0.0001f){
-
-                          float t=
-                              (L-x)/dx;
-
-                          if(
-                              t>0 &&
-                              t<best
-                          ){
-
-                              best=t;
-                              hx=x+dx*t;
-                              hy=y+dy*t;
-                              s=1;
-                          }
-                      }
-
-                      if(dy>0.0001f){
-
-                          float t=
-                              (B-y)/dy;
-
-                          if(
-                              t>0 &&
-                              t<best
-                          ){
-
-                              best=t;
-                              hx=x+dx*t;
-                              hy=y+dy*t;
-                              s=4;
-                          }
-                      }
-
-                      if(dy<-0.0001f){
-
-                          float t=
-                              (T-y)/dy;
-
-                          if(
-                              t>0 &&
-                              t<best
-                          ){
-
-                              best=t;
-                              hx=x+dx*t;
-                              hy=y+dy*t;
-                              s=2;
-                          }
-                      }
-
-                      return new Hit(
-                          hx,
-                          hy,
-                          s
-                      );
-                  }
-
-                  class Hit{
-
-                      float x,y;
-                      int s;
-
-                      Hit(
-                          float a,
-                          float b,
-                          int z
-                      ){
-
-                          x=a;
-                          y=b;
-                          s=z;
-                      }
-                  }
-              }
-
-              Notification notification(){
-
-                  return new Notification.Builder(
-                      this,
-                      "aim"
-                  )
-                  .setContentTitle(
-                      "Aim Helper"
-                  )
-                  .setContentText(
-                      "Bola putih - satu target - garis bidik"
-                  )
-                  .setSmallIcon(
-                      android.R.drawable.ic_menu_compass
-                  )
-                  .setOngoing(true)
-                  .build();
-              }
-
-              void channel(){
-
-                  if(Build.VERSION.SDK_INT>=26){
-
-                      NotificationChannel c=
-                          new NotificationChannel(
-                              "aim",
-                              "Aim Helper",
-                              NotificationManager
-                                  .IMPORTANCE_LOW
-                          );
-
-                      (
-                          (NotificationManager)
-                          getSystemService(
-                              NOTIFICATION_SERVICE
-                          )
-                      )
-                      .createNotificationChannel(c);
-                  }
-              }
-
-              @Override
-              public IBinder onBind(
-                  Intent i
-              ){
-                  return null;
-              }
-
-              @Override
-              public void onDestroy(){
-
-                  try{
-                      if(aim!=null)
-                          wm.removeView(aim);
-                  }catch(Exception e){}
-
-                  try{
-                      if(cue!=null)
-                          wm.removeView(cue);
-                  }catch(Exception e){}
-
-                  try{
-                      if(target!=null)
-                          wm.removeView(target);
-                  }catch(Exception e){}
-
-                  try{
-                      if(panel!=null)
-                          wm.removeView(panel);
-                  }catch(Exception e){}
-
-                  try{
-                      if(joy!=null)
-                          wm.removeView(joy);
-                  }catch(Exception e){}
-
-                  super.onDestroy();
-              }
-          }
-          JAVA
-
-      - name: Remove old source files
-        run: |
-          PROJECT="AimHelper-Native-Overlay-v1"
-
-          find "$PROJECT/app/src/main/java" \
-            -type f \
-            -name "*.kt" \
-            -delete
-
-          find "$PROJECT/app/src/main/java" \
-            -type f \
-            -name "*.java" \
-            ! -name "MainActivity.java" \
-            ! -name "OverlayService.java" \
-            -delete
-
-      - name: Configure Gradle
-        run: |
+          unzip -q AimHelper-Native-Overlay-OnlineBuild.zip
           PROJECT="AimHelper-Native-Overlay-v1"
 
           cat > "$PROJECT/gradle.properties" <<'EOF'
@@ -1198,33 +24,754 @@ jobs:
           org.gradle.jvmargs=-Xmx2048m
           EOF
 
-      - name: Verify source
+          cat > "$PROJECT/app/build.gradle" <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.aimhelper.overlay'
+              compileSdk 35
+
+              defaultConfig {
+                  applicationId 'com.aimhelper.overlay'
+                  minSdk 23
+                  targetSdk 35
+                  versionCode 9
+                  versionName '1.8'
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+
+          configurations.configureEach {
+              exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+              exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+          }
+          EOF
+
+          mkdir -p "$PROJECT/app/src/main/java/com/aimhelper/overlay"
+          mkdir -p "$PROJECT/app/src/main/res/values"
+
+          cat > "$PROJECT/app/src/main/res/values/strings.xml" <<'EOF'
+          <resources>
+              <string name="app_name">Aim Helper</string>
+          </resources>
+          EOF
+
+          cat > "$PROJECT/app/src/main/AndroidManifest.xml" <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+
+              <application
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
+                  android:label="Aim Helper"
+                  android:allowBackup="false"
+                  android:supportsRtl="true">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+
+                  </activity>
+
+                  <service
+                      android:name=".OverlayService"
+                      android:exported="false"/>
+
+              </application>
+          </manifest>
+          EOF
+
+          cat > "$PROJECT/app/src/main/java/com/aimhelper/overlay/MainActivity.java" <<'EOF'
+          package com.aimhelper.overlay;
+
+          import android.app.Activity;
+          import android.content.Intent;
+          import android.graphics.Color;
+          import android.net.Uri;
+          import android.os.Bundle;
+          import android.provider.Settings;
+          import android.view.Gravity;
+          import android.view.View;
+          import android.widget.Button;
+          import android.widget.LinearLayout;
+          import android.widget.TextView;
+
+          public class MainActivity extends Activity {
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  LinearLayout root = new LinearLayout(this);
+                  root.setOrientation(LinearLayout.VERTICAL);
+                  root.setPadding(35, 45, 35, 35);
+                  root.setGravity(Gravity.CENTER_HORIZONTAL);
+                  root.setBackgroundColor(Color.WHITE);
+
+                  TextView title = new TextView(this);
+                  title.setText("🎯 Aim Helper");
+                  title.setTextSize(28);
+                  title.setTextColor(Color.BLACK);
+                  title.setGravity(Gravity.CENTER);
+                  root.addView(title, new LinearLayout.LayoutParams(
+                          -1, 80
+                  ));
+
+                  TextView sub = new TextView(this);
+                  sub.setText(
+                          "Mistar Manual + Target + Analog\\n\\n" +
+                          "• Hanya 1 penanda bola target\\n" +
+                          "• Garis dimulai dari bola putih\\n" +
+                          "• Target dapat digeser\\n" +
+                          "• Analog dapat menggeser target\\n" +
+                          "• Panel kontrol dapat dipindahkan\\n" +
+                          "• Tidak ada auto-click / auto-shot"
+                  );
+                  sub.setTextSize(16);
+                  sub.setTextColor(Color.DKGRAY);
+                  sub.setPadding(0, 10, 0, 30);
+                  root.addView(sub);
+
+                  Button permission = new Button(this);
+                  permission.setText("1. Izinkan tampil di atas aplikasi");
+                  root.addView(permission, new LinearLayout.LayoutParams(
+                          -1, 65
+                  ));
+
+                  Button start = new Button(this);
+                  start.setText("2. NYALAKAN AIM HELPER");
+                  root.addView(start, new LinearLayout.LayoutParams(
+                          -1, 70
+                  ));
+
+                  Button stop = new Button(this);
+                  stop.setText("3. MATIKAN AIM HELPER");
+                  root.addView(stop, new LinearLayout.LayoutParams(
+                          -1, 70
+                  ));
+
+                  TextView info = new TextView(this);
+                  info.setText(
+                          "\\nCara memakai:\\n" +
+                          "1. Izinkan overlay.\\n" +
+                          "2. Nyalakan Aim Helper.\\n" +
+                          "3. Buka 8 Ball Pool.\\n" +
+                          "4. Geser lingkaran target ke bola yang ingin dibidik.\\n" +
+                          "5. Gunakan analog untuk koreksi posisi target.\\n" +
+                          "6. Panel dapat digeser ke tempat yang nyaman."
+                  );
+                  info.setTextSize(15);
+                  info.setTextColor(Color.DKGRAY);
+                  root.addView(info);
+
+                  permission.setOnClickListener(v -> {
+                      try {
+                          Intent intent = new Intent(
+                                  Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                  Uri.parse("package:" + getPackageName())
+                          );
+                          startActivity(intent);
+                      } catch (Exception e) {
+                          startActivity(new Intent(
+                                  Settings.ACTION_MANAGE_OVERLAY_PERMISSION
+                          ));
+                      }
+                  });
+
+                  start.setOnClickListener(v -> {
+                      if (Settings.canDrawOverlays(this)) {
+                          Intent intent = new Intent(this, OverlayService.class);
+                          startService(intent);
+                      } else {
+                          permission.performClick();
+                      }
+                  });
+
+                  stop.setOnClickListener(v -> {
+                      stopService(new Intent(this, OverlayService.class));
+                  });
+
+                  setContentView(root);
+              }
+          }
+          EOF
+
+          cat > "$PROJECT/app/src/main/java/com/aimhelper/overlay/OverlayService.java" <<'EOF'
+          package com.aimhelper.overlay;
+
+          import android.app.Service;
+          import android.content.Intent;
+          import android.graphics.Canvas;
+          import android.graphics.Color;
+          import android.graphics.DashPathEffect;
+          import android.graphics.Paint;
+          import android.graphics.Path;
+          import android.graphics.RectF;
+          import android.os.IBinder;
+          import android.provider.Settings;
+          import android.view.Gravity;
+          import android.view.MotionEvent;
+          import android.view.View;
+          import android.view.WindowManager;
+          import android.widget.FrameLayout;
+          import android.widget.TextView;
+
+          public class OverlayService extends Service {
+
+              private WindowManager wm;
+              private FrameLayout root;
+              private AimCanvas canvas;
+              private TextView panel;
+
+              private WindowManager.LayoutParams rootParams;
+              private WindowManager.LayoutParams panelParams;
+
+              @Override
+              public void onCreate() {
+                  super.onCreate();
+
+                  if (!Settings.canDrawOverlays(this)) {
+                      stopSelf();
+                      return;
+                  }
+
+                  wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+
+                  root = new FrameLayout(this);
+
+                  canvas = new AimCanvas();
+                  root.addView(canvas, new FrameLayout.LayoutParams(
+                          -1, -1
+                  ));
+
+                  panel = new TextView(this);
+                  panel.setText(
+                          "🎯 MISTAR ON\\n" +
+                          "TARGET  •  ANALOG\\n" +
+                          "Pantul: 1x"
+                  );
+                  panel.setTextSize(13);
+                  panel.setTextColor(Color.WHITE);
+                  panel.setGravity(Gravity.CENTER);
+                  panel.setPadding(18, 12, 18, 12);
+                  panel.setBackgroundColor(Color.argb(190, 20, 20, 20));
+
+                  panelParams = new WindowManager.LayoutParams(
+                          260,
+                          105,
+                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                          WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                          -3
+                  );
+                  panelParams.gravity = Gravity.TOP | Gravity.RIGHT;
+                  panelParams.x = 20;
+                  panelParams.y = 80;
+
+                  panel.setOnTouchListener(new View.OnTouchListener() {
+                      float downX;
+                      float downY;
+                      int startX;
+                      int startY;
+
+                      @Override
+                      public boolean onTouch(View v, MotionEvent event) {
+                          if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                              downX = event.getRawX();
+                              downY = event.getRawY();
+                              startX = panelParams.x;
+                              startY = panelParams.y;
+                              return true;
+                          }
+
+                          if (event.getAction() == MotionEvent.ACTION_MOVE) {
+                              panelParams.x =
+                                      startX + (int)(event.getRawX() - downX);
+
+                              panelParams.y =
+                                      startY + (int)(event.getRawY() - downY);
+
+                              wm.updateViewLayout(panel, panelParams);
+                              return true;
+                          }
+
+                          return true;
+                      }
+                  });
+
+                  rootParams = new WindowManager.LayoutParams(
+                          -1,
+                          -1,
+                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                          WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL |
+                          WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                          -3
+                  );
+
+                  rootParams.gravity = Gravity.TOP | Gravity.LEFT;
+
+                  wm.addView(root, rootParams);
+                  wm.addView(panel, panelParams);
+              }
+
+              @Override
+              public int onStartCommand(
+                      Intent intent,
+                      int flags,
+                      int startId
+              ) {
+                  return START_STICKY;
+              }
+
+              @Override
+              public void onDestroy() {
+                  try {
+                      if (panel != null) wm.removeView(panel);
+                  } catch (Exception ignored) {}
+
+                  try {
+                      if (root != null) wm.removeView(root);
+                  } catch (Exception ignored) {}
+
+                  super.onDestroy();
+              }
+
+              @Override
+              public IBinder onBind(Intent intent) {
+                  return null;
+              }
+
+              private class AimCanvas extends View {
+
+                  Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                  Paint dashed = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+                  float whiteX = 0.38f;
+                  float whiteY = 0.58f;
+
+                  float targetX = 0.63f;
+                  float targetY = 0.43f;
+
+                  float tableL;
+                  float tableR;
+                  float tableT;
+                  float tableB;
+
+                  float joyCX;
+                  float joyCY;
+
+                  boolean draggingTarget = false;
+                  boolean draggingJoystick = false;
+
+                  float lastJoyX;
+                  float lastJoyY;
+
+                  int bounceCount = 1;
+
+                  AimCanvas() {
+                      super(OverlayService.this);
+
+                      paint.setStrokeWidth(5);
+                      paint.setStyle(Paint.Style.STROKE);
+
+                      dashed.setStrokeWidth(4);
+                      dashed.setStyle(Paint.Style.STROKE);
+                      dashed.setPathEffect(
+                              new DashPathEffect(
+                                      new float[]{18, 14},
+                                      0
+                              )
+                      );
+
+                      setBackgroundColor(Color.TRANSPARENT);
+                  }
+
+                  @Override
+                  protected void onDraw(Canvas c) {
+                      super.onDraw(c);
+
+                      float w = getWidth();
+                      float h = getHeight();
+
+                      tableL = w * 0.17f;
+                      tableR = w * 0.86f;
+                      tableT = h * 0.16f;
+                      tableB = h * 0.91f;
+
+                      joyCX = w * 0.15f;
+                      joyCY = h * 0.82f;
+
+                      float sx = w * whiteX;
+                      float sy = h * whiteY;
+
+                      float tx = w * targetX;
+                      float ty = h * targetY;
+
+                      drawAimLine(c, sx, sy, tx, ty);
+                      drawBounce(c, sx, sy, tx, ty);
+                      drawTarget(c, tx, ty);
+                      drawJoystick(c);
+                  }
+
+                  private void drawAimLine(
+                          Canvas c,
+                          float sx,
+                          float sy,
+                          float tx,
+                          float ty
+                  ) {
+                      paint.setColor(Color.WHITE);
+                      paint.setAlpha(230);
+                      paint.setStrokeWidth(6);
+                      paint.setStyle(Paint.Style.STROKE);
+
+                      c.drawLine(sx, sy, tx, ty, paint);
+                  }
+
+                  private void drawTarget(
+                          Canvas c,
+                          float x,
+                          float y
+                  ) {
+                      // Hanya SATU penanda bola target.
+                      // Ukuran dibuat menyerupai bola permainan.
+                      paint.setStyle(Paint.Style.STROKE);
+                      paint.setStrokeWidth(3);
+                      paint.setColor(Color.WHITE);
+                      paint.setAlpha(220);
+
+                      c.drawCircle(x, y, 17, paint);
+
+                      paint.setStrokeWidth(2);
+                      paint.setColor(Color.GREEN);
+                      paint.setAlpha(180);
+
+                      c.drawCircle(x, y, 22, paint);
+                  }
+
+                  private void drawBounce(
+                          Canvas c,
+                          float sx,
+                          float sy,
+                          float tx,
+                          float ty
+                  ) {
+                      float dx = tx - sx;
+                      float dy = ty - sy;
+
+                      float x = tx;
+                      float y = ty;
+
+                      dashed.setColor(Color.WHITE);
+                      dashed.setAlpha(210);
+                      dashed.setStrokeWidth(4);
+
+                      Path path = new Path();
+                      path.moveTo(sx, sy);
+
+                      for (int i = 0; i < bounceCount; i++) {
+
+                          float nx = x;
+                          float ny = y;
+
+                          if (Math.abs(dx) > 0.001f) {
+                              float tLeft =
+                                      (tableL - x) / dx;
+
+                              float tRight =
+                                      (tableR - x) / dx;
+
+                              if (tLeft > 0) {
+                                  nx = tableL;
+                                  ny = y + dy * tLeft;
+                              }
+
+                              if (tRight > 0 &&
+                                  (tLeft <= 0 ||
+                                   tRight < tLeft)) {
+                                  nx = tableR;
+                                  ny = y + dy * tRight;
+                              }
+                          }
+
+                          if (Math.abs(dy) > 0.001f) {
+                              float tTop =
+                                      (tableT - y) / dy;
+
+                              float tBottom =
+                                      (tableB - y) / dy;
+
+                              if (tTop > 0) {
+                                  float yy =
+                                          y + dy * tTop;
+
+                                  if (nx == x ||
+                                      Math.abs(tTop) <
+                                      Math.abs((nx - x) / dx)) {
+                                      nx = x + dx * tTop;
+                                      ny = yy;
+                                  }
+                              }
+
+                              if (tBottom > 0) {
+                                  float yy =
+                                          y + dy * tBottom;
+
+                                  if (nx == x ||
+                                      Math.abs(tBottom) <
+                                      Math.abs((nx - x) / dx)) {
+                                      nx = x + dx * tBottom;
+                                      ny = yy;
+                                  }
+                              }
+                          }
+
+                          nx = clamp(nx, tableL, tableR);
+                          ny = clamp(ny, tableT, tableB);
+
+                          path.lineTo(nx, ny);
+
+                          dx = -dx;
+                          dy = -dy;
+
+                          x = nx;
+                          y = ny;
+                      }
+
+                      path.lineTo(
+                              clamp(
+                                      x + dx * 0.8f,
+                                      tableL,
+                                      tableR
+                              ),
+                              clamp(
+                                      y + dy * 0.8f,
+                                      tableT,
+                                      tableB
+                              )
+                      );
+
+                      c.drawPath(path, dashed);
+
+                      paint.setStyle(Paint.Style.FILL);
+                      paint.setColor(Color.YELLOW);
+                      paint.setAlpha(230);
+
+                      c.drawCircle(
+                              clamp(x, tableL, tableR),
+                              clamp(y, tableT, tableB),
+                              7,
+                              paint
+                      );
+                  }
+
+                  private void drawJoystick(Canvas c) {
+
+                      paint.setStyle(Paint.Style.STROKE);
+                      paint.setStrokeWidth(3);
+                      paint.setColor(Color.WHITE);
+                      paint.setAlpha(150);
+
+                      c.drawCircle(
+                              joyCX,
+                              joyCY,
+                              55,
+                              paint
+                      );
+
+                      paint.setStyle(Paint.Style.FILL);
+                      paint.setColor(Color.argb(
+                              100,
+                              0,
+                              255,
+                              0
+                      ));
+
+                      c.drawCircle(
+                              joyCX,
+                              joyCY,
+                              32,
+                              paint
+                      );
+
+                      paint.setColor(Color.WHITE);
+                      paint.setAlpha(220);
+
+                      c.drawCircle(
+                              joyCX,
+                              joyCY,
+                              13,
+                              paint
+                      );
+                  }
+
+                  @Override
+                  public boolean onTouchEvent(MotionEvent e) {
+
+                      float x = e.getX();
+                      float y = e.getY();
+
+                      float w = getWidth();
+                      float h = getHeight();
+
+                      float tx = w * targetX;
+                      float ty = h * targetY;
+
+                      if (e.getAction() ==
+                              MotionEvent.ACTION_DOWN) {
+
+                          if (distance(x, y, tx, ty) < 45) {
+                              draggingTarget = true;
+                              return true;
+                          }
+
+                          if (distance(
+                                  x,
+                                  y,
+                                  joyCX,
+                                  joyCY
+                          ) < 80) {
+                              draggingJoystick = true;
+                              lastJoyX = x;
+                              lastJoyY = y;
+                              return true;
+                          }
+
+                          return true;
+                      }
+
+                      if (e.getAction() ==
+                              MotionEvent.ACTION_MOVE) {
+
+                          if (draggingTarget) {
+
+                              targetX =
+                                      clamp(
+                                              x / w,
+                                              tableL / w,
+                                              tableR / w
+                                      );
+
+                              targetY =
+                                      clamp(
+                                              y / h,
+                                              tableT / h,
+                                              tableB / h
+                                      );
+
+                              invalidate();
+                              return true;
+                          }
+
+                          if (draggingJoystick) {
+
+                              float moveX =
+                                      x - lastJoyX;
+
+                              float moveY =
+                                      y - lastJoyY;
+
+                              targetX += moveX / w * 1.4f;
+                              targetY += moveY / h * 1.4f;
+
+                              targetX =
+                                      clamp(
+                                              targetX,
+                                              tableL / w,
+                                              tableR / w
+                                      );
+
+                              targetY =
+                                      clamp(
+                                              targetY,
+                                              tableT / h,
+                                              tableB / h
+                                      );
+
+                              lastJoyX = x;
+                              lastJoyY = y;
+
+                              invalidate();
+                              return true;
+                          }
+
+                          return true;
+                      }
+
+                      if (e.getAction() ==
+                              MotionEvent.ACTION_UP ||
+                          e.getAction() ==
+                              MotionEvent.ACTION_CANCEL) {
+
+                          draggingTarget = false;
+                          draggingJoystick = false;
+
+                          invalidate();
+                          return true;
+                      }
+
+                      return true;
+                  }
+
+                  private float distance(
+                          float x1,
+                          float y1,
+                          float x2,
+                          float y2
+                  ) {
+                      float dx = x1 - x2;
+                      float dy = y1 - y2;
+
+                      return (float)Math.sqrt(
+                              dx * dx + dy * dy
+                      );
+                  }
+
+                  private float clamp(
+                          float value,
+                          float min,
+                          float max
+                  ) {
+                      return Math.max(
+                              min,
+                              Math.min(max, value)
+                      );
+                  }
+              }
+          }
+          EOF
+
+      - name: Fix Gradle wrapper
         run: |
-          PROJECT="AimHelper-Native-Overlay-v1"
+          cd AimHelper-Native-Overlay-v1
+          chmod +x gradlew
 
-          test -s "$PROJECT/app/src/main/java/com/aimhelper/overlay/MainActivity.java"
-          test -s "$PROJECT/app/src/main/java/com/aimhelper/overlay/OverlayService.java"
-
-          echo "SOURCE OK"
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.2.1'
+      - name: Clean build
+        run: |
+          cd AimHelper-Native-Overlay-v1
+          ./gradlew clean --no-daemon
 
       - name: Build APK
         run: |
           cd AimHelper-Native-Overlay-v1
-          gradle clean assembleDebug --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AimHelper-APK-Analog-Movable-v2
-          path: AimHelper-Native-Overlay-v1/app/build/outputs/apk/debug/*.apk
+          name: AimHelper-APK
+          path: AimHelper-Native-Overlay-v1/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
