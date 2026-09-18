@@ -16,25 +16,24 @@ jobs:
       - name: Extract Android project
         run: unzip -q AimHelper-Native-Overlay-OnlineBuild.zip
 
-      - name: Prepare Stage 2 Fixed
+      - name: Prepare Stage 2
         run: |
-          # Ambil workflow Stage 2 sebelumnya sebagai template
-          curl -L -s \
-            https://raw.githubusercontent.com/gunadipanji7-pixel/Aim-Helper/8b7c2d8/.github/workflows/build.yml \
-            -o /tmp/stage2-template.yml
+          curl -L -s https://raw.githubusercontent.com/gunadipanji7-pixel/Aim-Helper/8b7c2d8/.github/workflows/build.yml -o /tmp/stage2-template.yml
 
-          # Perbaiki error RESULT_OK pada OverlayService
-          sed -i \
-            's/resultCode == RESULT_OK/resultCode == android.app.Activity.RESULT_OK/g' \
-            /tmp/stage2-template.yml
-
-          # Ambil script Prepare Stage 2 dari template
           sed -n '20,614p' /tmp/stage2-template.yml \
             | sed 's/^          //' \
             > /tmp/prepare-stage2.sh
 
           chmod +x /tmp/prepare-stage2.sh
           bash /tmp/prepare-stage2.sh
+
+      - name: Fix OverlayService
+        run: |
+          FILE="AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/OverlayService.java"
+          test -f "$FILE"
+          sed -i 's/resultCode == RESULT_OK/resultCode == android.app.Activity.RESULT_OK/g' "$FILE"
+          echo "Checking RESULT_OK:"
+          grep -n "resultCode.*RESULT_OK" "$FILE" || true
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -56,4 +55,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AimHelper-APK-Stage2
-          path: AimHelper-Native-Overlay-v1/app/build/outputs/apk/debug/*.apk0
+          path: AimHelper-Native-Overlay-v1/app/build/outputs/apk/debug/*.apk
