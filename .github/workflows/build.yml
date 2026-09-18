@@ -16,6 +16,13 @@ jobs:
       - name: Extract Android project
         run: unzip -q AimHelper-Native-Overlay-OnlineBuild.zip
 
+      - name: Create gradle.properties
+        run: |
+          printf '%s\n' \
+            'android.useAndroidX=true' \
+            'android.enableJetifier=true' \
+            > AimHelper-Native-Overlay-v1/gradle.properties
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
