@@ -18,7 +18,7 @@ jobs:
         run: |
           unzip -q AimHelper-Native-Overlay-OnlineBuild.zip
 
-      - name: Configure Android project
+      - name: Configure AndroidX
         run: |
           PROJECT="AimHelper-Native-Overlay-v1"
 
@@ -41,8 +41,8 @@ jobs:
                   applicationId 'com.aimhelper.overlay'
                   minSdk 23
                   targetSdk 35
-                  versionCode 3
-                  versionName '1.2'
+                  versionCode 4
+                  versionName '1.3'
               }
           }
           EOF
@@ -71,11 +71,8 @@ jobs:
                       android:exported="true">
 
                       <intent-filter>
-                          <action
-                              android:name="android.intent.action.MAIN" />
-
-                          <category
-                              android:name="android.intent.category.LAUNCHER" />
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
 
                   </activity>
@@ -99,12 +96,10 @@ jobs:
           import android.app.Activity;
           import android.content.Intent;
           import android.graphics.Color;
-          import android.graphics.drawable.GradientDrawable;
           import android.net.Uri;
           import android.os.Bundle;
           import android.provider.Settings;
           import android.view.Gravity;
-          import android.view.View;
           import android.widget.Button;
           import android.widget.LinearLayout;
           import android.widget.TextView;
@@ -112,9 +107,11 @@ jobs:
           public class MainActivity extends Activity {
 
               private int dp(float value) {
-                  return (int) (
-                      value * getResources()
-                          .getDisplayMetrics().density
+                  return (int)(
+                      value *
+                      getResources()
+                          .getDisplayMetrics()
+                          .density
                   );
               }
 
@@ -137,56 +134,44 @@ jobs:
                   );
 
                   root.setBackgroundColor(
-                      Color.rgb(5, 20, 28)
+                      Color.rgb(5,20,28)
                   );
 
                   TextView title =
                       new TextView(this);
 
-                  title.setText(
-                      "🎯 Aim Helper"
-                  );
-
-                  title.setTextColor(
-                      Color.WHITE
-                  );
-
+                  title.setText("🎯 Aim Helper");
+                  title.setTextColor(Color.WHITE);
                   title.setTextSize(34);
-
-                  title.setGravity(
-                      Gravity.CENTER
-                  );
+                  title.setGravity(Gravity.CENTER);
 
                   root.addView(
                       title,
                       new LinearLayout.LayoutParams(
                           -1,
-                          dp(65)
+                          dp(70)
                       )
                   );
 
-                  TextView subtitle =
+                  TextView sub =
                       new TextView(this);
 
-                  subtitle.setText(
+                  sub.setText(
                       "Mistar Manual + Pantulan"
                   );
 
-                  subtitle.setTextColor(
-                      Color.rgb(170, 195, 210)
+                  sub.setTextColor(
+                      Color.rgb(170,195,210)
                   );
 
-                  subtitle.setTextSize(21);
-
-                  subtitle.setGravity(
-                      Gravity.CENTER
-                  );
+                  sub.setTextSize(21);
+                  sub.setGravity(Gravity.CENTER);
 
                   root.addView(
-                      subtitle,
+                      sub,
                       new LinearLayout.LayoutParams(
                           -1,
-                          dp(50)
+                          dp(55)
                       )
                   );
 
@@ -194,13 +179,13 @@ jobs:
                       new TextView(this);
 
                   info.setText(
-                      "Geser titik ⚪ dan 🎯 untuk menentukan " +
-                      "arah tembakan. Garis putih menunjukkan " +
-                      "arah pantulan pada bantalan meja."
+                      "⚪ Geser titik bola\n" +
+                      "🎯 Geser titik arah bidikan\n" +
+                      "Tekan panel untuk mengganti 1–3 pantulan."
                   );
 
                   info.setTextColor(
-                      Color.rgb(205, 220, 228)
+                      Color.rgb(205,220,228)
                   );
 
                   info.setTextSize(17);
@@ -227,13 +212,12 @@ jobs:
                       "1. Izinkan tampil di atas aplikasi"
                   );
 
-                  permission.setTextSize(16);
-
                   permission.setOnClickListener(
                       v -> {
 
                           if (!Settings.canDrawOverlays(
-                                  MainActivity.this)) {
+                              MainActivity.this
+                          )) {
 
                               Intent intent =
                                   new Intent(
@@ -261,14 +245,12 @@ jobs:
                       "2. Nyalakan Mistar Manual"
                   );
 
-                  start.setTextSize(16);
-
                   start.setOnClickListener(
                       v -> {
 
                           if (!Settings.canDrawOverlays(
-                                  MainActivity.this)) {
-
+                              MainActivity.this
+                          )) {
                               return;
                           }
 
@@ -278,7 +260,9 @@ jobs:
                                   OverlayService.class
                               );
 
-                          if (android.os.Build.VERSION.SDK_INT >= 26) {
+                          if (
+                              android.os.Build.VERSION.SDK_INT >= 26
+                          ) {
 
                               startForegroundService(
                                   intent
@@ -303,8 +287,6 @@ jobs:
                       "3. Matikan Mistar"
                   );
 
-                  stop.setTextSize(16);
-
                   stop.setOnClickListener(
                       v -> {
 
@@ -326,13 +308,13 @@ jobs:
                       new TextView(this);
 
                   note.setText(
-                      "Catatan: fitur ini hanya memberikan " +
-                      "panduan visual. Tidak ada auto-click, " +
-                      "auto-shot, atau pengendalian permainan."
+                      "Panduan visual saja. " +
+                      "Tidak ada auto-click, auto-shot, " +
+                      "atau pengendalian permainan."
                   );
 
                   note.setTextColor(
-                      Color.rgb(155, 180, 195)
+                      Color.rgb(155,180,195)
                   );
 
                   note.setTextSize(15);
@@ -375,7 +357,7 @@ jobs:
           }
           JAVA
 
-      - name: Configure OverlayService
+      - name: Configure OverlayService FIX
         run: |
           PROJECT="AimHelper-Native-Overlay-v1"
 
@@ -407,19 +389,15 @@ jobs:
           public class OverlayService extends Service {
 
               private WindowManager wm;
-
               private AimCanvas canvas;
-
-              private View startHandle;
-              private View tipHandle;
-
+              private View ballHandle;
+              private View aimHandle;
               private TextView panel;
 
-              private float startX;
-              private float startY;
-
-              private float tipX;
-              private float tipY;
+              private float ballX;
+              private float ballY;
+              private float aimX;
+              private float aimY;
 
               private float tableL;
               private float tableT;
@@ -430,6 +408,28 @@ jobs:
 
               private static final String CHANNEL =
                   "aim_helper_manual";
+
+              private static class DragState {
+
+                  WindowManager.LayoutParams params;
+                  float downRawX;
+                  float downRawY;
+                  int startX;
+                  int startY;
+
+                  DragState(
+                      WindowManager.LayoutParams p,
+                      float x,
+                      float y
+                  ) {
+
+                      params = p;
+                      downRawX = x;
+                      downRawY = y;
+                      startX = p.x;
+                      startY = p.y;
+                  }
+              }
 
               @Override
               public void onCreate() {
@@ -470,15 +470,17 @@ jobs:
 
                   tableL = w * 0.17f;
                   tableR = w * 0.86f;
-
                   tableT = h * 0.16f;
                   tableB = h * 0.91f;
 
-                  startX = w * 0.56f;
-                  startY = h * 0.56f;
+                  ballX = w * 0.56f;
+                  ballY = h * 0.56f;
 
-                  tipX = w * 0.56f;
-                  tipY = h * 0.30f;
+                  aimX = w * 0.56f;
+                  aimY = h * 0.30f;
+
+                  canvas =
+                      new AimCanvas(this);
 
                   WindowManager.LayoutParams drawParams =
                       params(
@@ -487,41 +489,35 @@ jobs:
                           WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                       );
 
-                  canvas =
-                      new AimCanvas(this);
-
                   wm.addView(
                       canvas,
                       drawParams
                   );
 
-                  startHandle =
-                      handle("⚪");
+                  ballHandle =
+                      createHandle("⚪");
 
-                  tipHandle =
-                      handle("🎯");
+                  aimHandle =
+                      createHandle("🎯");
 
                   addHandle(
-                      startHandle,
-                      startX,
-                      startY,
+                      ballHandle,
+                      ballX,
+                      ballY,
                       true
                   );
 
                   addHandle(
-                      tipHandle,
-                      tipX,
-                      tipY,
+                      aimHandle,
+                      aimX,
+                      aimY,
                       false
                   );
 
                   panel =
                       new TextView(this);
 
-                  panel.setTextColor(
-                      Color.WHITE
-                  );
-
+                  panel.setTextColor(Color.WHITE);
                   panel.setTextSize(14);
 
                   panel.setTypeface(
@@ -529,9 +525,7 @@ jobs:
                       Typeface.BOLD
                   );
 
-                  panel.setGravity(
-                      Gravity.CENTER
-                  );
+                  panel.setGravity(Gravity.CENTER);
 
                   panel.setPadding(
                       15,
@@ -541,7 +535,7 @@ jobs:
                   );
 
                   panel.setBackground(
-                      background(
+                      box(
                           Color.argb(
                               225,
                               8,
@@ -565,8 +559,7 @@ jobs:
                               bounceCount = 1;
                           }
 
-                          update();
-
+                          updateInfo();
                           canvas.invalidate();
                       }
                   );
@@ -574,7 +567,7 @@ jobs:
                   WindowManager.LayoutParams pp =
                       params(
                           320,
-                          125,
+                          130,
                           WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                       );
 
@@ -590,7 +583,52 @@ jobs:
                       pp
                   );
 
-                  update();
+                  updateInfo();
+              }
+
+              private GradientDrawable box(
+                  int color,
+                  int stroke
+              ) {
+
+                  GradientDrawable d =
+                      new GradientDrawable();
+
+                  d.setColor(color);
+                  d.setCornerRadius(28);
+                  d.setStroke(4, stroke);
+
+                  return d;
+              }
+
+              private TextView createHandle(
+                  String text
+              ) {
+
+                  TextView v =
+                      new TextView(this);
+
+                  v.setText(text);
+                  v.setTextSize(27);
+                  v.setGravity(Gravity.CENTER);
+
+                  v.setBackground(
+                      box(
+                          Color.argb(
+                              205,
+                              15,
+                              35,
+                              45
+                          ),
+                          Color.rgb(
+                              50,
+                              240,
+                              120
+                          )
+                      )
+                  );
+
+                  return v;
               }
 
               private WindowManager.LayoutParams params(
@@ -609,65 +647,11 @@ jobs:
                   );
               }
 
-              private TextView handle(
-                  String text
-              ) {
-
-                  TextView v =
-                      new TextView(this);
-
-                  v.setText(text);
-
-                  v.setTextSize(27);
-
-                  v.setGravity(
-                      Gravity.CENTER
-                  );
-
-                  v.setBackground(
-                      background(
-                          Color.argb(
-                              205,
-                              15,
-                              35,
-                              45
-                          ),
-                          Color.rgb(
-                              50,
-                              240,
-                              120
-                          )
-                      )
-                  );
-
-                  return v;
-              }
-
-              private GradientDrawable background(
-                  int fill,
-                  int stroke
-              ) {
-
-                  GradientDrawable d =
-                      new GradientDrawable();
-
-                  d.setColor(fill);
-
-                  d.setCornerRadius(25);
-
-                  d.setStroke(
-                      4,
-                      stroke
-                  );
-
-                  return d;
-              }
-
               private void addHandle(
-                  View v,
+                  View view,
                   float x,
                   float y,
-                  boolean isStart
+                  boolean isBall
               ) {
 
                   WindowManager.LayoutParams lp =
@@ -684,31 +668,42 @@ jobs:
                   lp.x = (int)x - 36;
                   lp.y = (int)y - 36;
 
-                  wm.addView(v, lp);
+                  DragState state =
+                      new DragState(
+                          lp,
+                          0,
+                          0
+                      );
 
-                  v.setTag(lp);
+                  view.setTag(state);
 
-                  v.setOnTouchListener(
-                      (view, event) -> {
+                  wm.addView(
+                      view,
+                      lp
+                  );
 
-                          WindowManager.LayoutParams p =
-                              (WindowManager.LayoutParams)
-                              view.getTag();
+                  view.setOnTouchListener(
+                      (v, event) -> {
+
+                          DragState s =
+                              (DragState)v.getTag();
 
                           if (
                               event.getAction() ==
                               MotionEvent.ACTION_DOWN
                           ) {
 
-                              view.setTag(
-                                  new Object[]{
-                                      p,
-                                      event.getRawX(),
-                                      event.getRawY(),
-                                      p.x,
-                                      p.y
-                                  }
-                              );
+                              s.downRawX =
+                                  event.getRawX();
+
+                              s.downRawY =
+                                  event.getRawY();
+
+                              s.startX =
+                                  s.params.x;
+
+                              s.startY =
+                                  s.params.y;
 
                               return true;
                           }
@@ -718,65 +713,56 @@ jobs:
                               MotionEvent.ACTION_MOVE
                           ) {
 
-                              Object[] data =
-                                  (Object[])
-                                  view.getTag();
-
-                              WindowManager.LayoutParams original =
-                                  (WindowManager.LayoutParams)
-                                  data[0];
-
-                              float downX =
-                                  (float)data[1];
-
-                              float downY =
-                                  (float)data[2];
-
-                              int baseX =
-                                  (int)data[3];
-
-                              int baseY =
-                                  (int)data[4];
-
-                              original.x =
-                                  baseX +
+                              int newX =
+                                  s.startX +
                                   (int)(
                                       event.getRawX() -
-                                      downX
+                                      s.downRawX
                                   );
 
-                              original.y =
-                                  baseY +
+                              int newY =
+                                  s.startY +
                                   (int)(
                                       event.getRawY() -
-                                      downY
+                                      s.downRawY
                                   );
 
+                              s.params.x = newX;
+                              s.params.y = newY;
+
                               wm.updateViewLayout(
-                                  view,
-                                  original
+                                  v,
+                                  s.params
                               );
 
-                              float cx =
-                                  original.x + 36;
+                              float centerX =
+                                  newX + 36;
 
-                              float cy =
-                                  original.y + 36;
+                              float centerY =
+                                  newY + 36;
 
-                              if (isStart) {
+                              if (isBall) {
 
-                                  startX = cx;
-                                  startY = cy;
+                                  ballX = centerX;
+                                  ballY = centerY;
 
                               } else {
 
-                                  tipX = cx;
-                                  tipY = cy;
+                                  aimX = centerX;
+                                  aimY = centerY;
                               }
+
+                              updateInfo();
 
                               canvas.invalidate();
 
-                              update();
+                              return true;
+                          }
+
+                          if (
+                              event.getAction() ==
+                              MotionEvent.ACTION_UP
+                          ) {
 
                               return true;
                           }
@@ -786,7 +772,7 @@ jobs:
                   );
               }
 
-              private void update() {
+              private void updateInfo() {
 
                   if (panel == null) {
                       return;
@@ -795,8 +781,8 @@ jobs:
                   double angle =
                       Math.toDegrees(
                           Math.atan2(
-                              tipY - startY,
-                              tipX - startX
+                              aimY - ballY,
+                              aimX - ballX
                           )
                       );
 
@@ -806,8 +792,8 @@ jobs:
 
                   double distance =
                       Math.hypot(
-                          tipX - startX,
-                          tipY - startY
+                          aimX - ballX,
+                          aimY - ballY
                       );
 
                   panel.setText(
@@ -825,7 +811,7 @@ jobs:
                   );
               }
 
-              private float[] hit(
+              private float[] wallHit(
                   float x,
                   float y,
                   float dx,
@@ -835,10 +821,10 @@ jobs:
                   float best =
                       Float.MAX_VALUE;
 
-                  float hx =
+                  float hitX =
                       x + dx * 10000;
 
-                  float hy =
+                  float hitY =
                       y + dy * 10000;
 
                   if (dx > 0) {
@@ -849,9 +835,8 @@ jobs:
                       if (t > 0 && t < best) {
 
                           best = t;
-
-                          hx = x + dx * t;
-                          hy = y + dy * t;
+                          hitX = x + dx * t;
+                          hitY = y + dy * t;
                       }
                   }
 
@@ -863,9 +848,8 @@ jobs:
                       if (t > 0 && t < best) {
 
                           best = t;
-
-                          hx = x + dx * t;
-                          hy = y + dy * t;
+                          hitX = x + dx * t;
+                          hitY = y + dy * t;
                       }
                   }
 
@@ -877,9 +861,8 @@ jobs:
                       if (t > 0 && t < best) {
 
                           best = t;
-
-                          hx = x + dx * t;
-                          hy = y + dy * t;
+                          hitX = x + dx * t;
+                          hitY = y + dy * t;
                       }
                   }
 
@@ -891,15 +874,14 @@ jobs:
                       if (t > 0 && t < best) {
 
                           best = t;
-
-                          hx = x + dx * t;
-                          hy = y + dy * t;
+                          hitX = x + dx * t;
+                          hitY = y + dy * t;
                       }
                   }
 
                   return new float[]{
-                      hx,
-                      hy
+                      hitX,
+                      hitY
                   };
               }
 
@@ -915,29 +897,29 @@ jobs:
                   float dx = x2 - x1;
                   float dy = y2 - y1;
 
-                  float len =
+                  float length =
                       (float)Math.hypot(
                           dx,
                           dy
                       );
 
-                  if (len < 1) {
+                  if (length < 1) {
                       return;
                   }
 
-                  float ux = dx / len;
-                  float uy = dy / len;
+                  float ux = dx / length;
+                  float uy = dy / length;
 
                   for (
                       float d = 0;
-                      d < len;
+                      d < length;
                       d += 28
                   ) {
 
                       float e =
                           Math.min(
-                              d + 14,
-                              len
+                              d + 15,
+                              length
                           );
 
                       c.drawLine(
@@ -958,8 +940,8 @@ jobs:
                           Paint.ANTI_ALIAS_FLAG
                       );
 
-                  AimCanvas(Context c) {
-                      super(c);
+                  AimCanvas(Context context) {
+                      super(context);
 
                       paint.setStrokeCap(
                           Paint.Cap.ROUND
@@ -974,23 +956,23 @@ jobs:
                       super.onDraw(c);
 
                       float dx =
-                          tipX - startX;
+                          aimX - ballX;
 
                       float dy =
-                          tipY - startY;
+                          aimY - ballY;
 
-                      float len =
+                      float length =
                           (float)Math.hypot(
                               dx,
                               dy
                           );
 
-                      if (len < 2) {
+                      if (length < 2) {
                           return;
                       }
 
-                      dx /= len;
-                      dy /= len;
+                      dx /= length;
+                      dy /= length;
 
                       paint.setStyle(
                           Paint.Style.STROKE
@@ -1007,15 +989,15 @@ jobs:
                       );
 
                       c.drawLine(
-                          startX,
-                          startY,
-                          tipX,
-                          tipY,
+                          ballX,
+                          ballY,
+                          aimX,
+                          aimY,
                           paint
                       );
 
-                      float x = tipX;
-                      float y = tipY;
+                      float x = aimX;
+                      float y = aimY;
 
                       for (
                           int i = 0;
@@ -1023,8 +1005,8 @@ jobs:
                           i++
                       ) {
 
-                          float[] h =
-                              hit(
+                          float[] hit =
+                              wallHit(
                                   x,
                                   y,
                                   dx,
@@ -1042,11 +1024,9 @@ jobs:
                               paint,
                               x,
                               y,
-                              h[0],
-                              h[1]
+                              hit[0],
+                              hit[1]
                           );
-
-                          paint.setStrokeWidth(4);
 
                           paint.setColor(
                               Color.rgb(
@@ -1057,31 +1037,29 @@ jobs:
                           );
 
                           c.drawCircle(
-                              h[0],
-                              h[1],
-                              14,
+                              hit[0],
+                              hit[1],
+                              13,
                               paint
                           );
 
-                          boolean side =
+                          boolean verticalWall =
                               Math.abs(
-                                  h[0] - tableL
-                              ) < 3 ||
+                                  hit[0] - tableL
+                              ) < 5 ||
                               Math.abs(
-                                  h[0] - tableR
-                              ) < 3;
+                                  hit[0] - tableR
+                              ) < 5;
 
-                          x = h[0];
-                          y = h[1];
+                          x = hit[0];
+                          y = hit[1];
 
-                          if (side) {
+                          if (verticalWall) {
                               dx = -dx;
                           } else {
                               dy = -dy;
                           }
                       }
-
-                      paint.setStrokeWidth(4);
 
                       paint.setColor(
                           Color.rgb(
@@ -1091,16 +1069,18 @@ jobs:
                           )
                       );
 
+                      paint.setStrokeWidth(4);
+
                       c.drawCircle(
-                          startX,
-                          startY,
+                          ballX,
+                          ballY,
                           28,
                           paint
                       );
 
                       c.drawCircle(
-                          tipX,
-                          tipY,
+                          aimX,
+                          aimY,
                           28,
                           paint
                       );
@@ -1109,7 +1089,7 @@ jobs:
                           Paint.Style.FILL
                       );
 
-                      paint.setTextSize(24);
+                      paint.setTextSize(23);
 
                       paint.setColor(
                           Color.WHITE
@@ -1117,9 +1097,35 @@ jobs:
 
                       c.drawText(
                           "BIDIK",
-                          tipX + 35,
-                          tipY,
+                          aimX + 35,
+                          aimY,
                           paint
+                      );
+                  }
+              }
+
+              private void createChannel() {
+
+                  if (
+                      Build.VERSION.SDK_INT >= 26
+                  ) {
+
+                      NotificationChannel channel =
+                          new NotificationChannel(
+                              CHANNEL,
+                              "Aim Helper",
+                              NotificationManager
+                                  .IMPORTANCE_LOW
+                          );
+
+                      NotificationManager manager =
+                          (NotificationManager)
+                          getSystemService(
+                              Context.NOTIFICATION_SERVICE
+                          );
+
+                      manager.createNotificationChannel(
+                          channel
                       );
                   }
               }
@@ -1144,32 +1150,6 @@ jobs:
                   .build();
               }
 
-              private void createChannel() {
-
-                  if (
-                      Build.VERSION.SDK_INT >= 26
-                  ) {
-
-                      NotificationChannel ch =
-                          new NotificationChannel(
-                              CHANNEL,
-                              "Aim Helper",
-                              NotificationManager
-                                  .IMPORTANCE_LOW
-                          );
-
-                      NotificationManager nm =
-                          (NotificationManager)
-                          getSystemService(
-                              Context.NOTIFICATION_SERVICE
-                          );
-
-                      nm.createNotificationChannel(
-                          ch
-                      );
-                  }
-              }
-
               @Override
               public void onDestroy() {
 
@@ -1179,12 +1159,12 @@ jobs:
                           wm.removeView(canvas);
                       }
 
-                      if (startHandle != null) {
-                          wm.removeView(startHandle);
+                      if (ballHandle != null) {
+                          wm.removeView(ballHandle);
                       }
 
-                      if (tipHandle != null) {
-                          wm.removeView(tipHandle);
+                      if (aimHandle != null) {
+                          wm.removeView(aimHandle);
                       }
 
                       if (panel != null) {
@@ -1206,20 +1186,36 @@ jobs:
           }
           JAVA
 
+      - name: Verify files
+        run: |
+          PROJECT="AimHelper-Native-Overlay-v1"
+
+          test -f "$PROJECT/gradle.properties"
+          test -f "$PROJECT/app/build.gradle"
+          test -f "$PROJECT/app/src/main/AndroidManifest.xml"
+          test -f "$PROJECT/app/src/main/java/com/aimhelper/overlay/MainActivity.java"
+          test -f "$PROJECT/app/src/main/java/com/aimhelper/overlay/OverlayService.java"
+
+          echo "AIM HELPER MANUAL RULER FIX OK"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.2.1'
+
       - name: Build APK
         run: |
           cd AimHelper-Native-Overlay-v1
-
-          chmod +x gradlew 2>/dev/null || true
-
-          if [ -f gradlew ]; then
-            ./gradlew assembleDebug --stacktrace
-          else
-            gradle assembleDebug --stacktrace
-          fi
+          gradle assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AimHelper-APK-Manual-Ruler
+          name: AimHelper-APK-Manual-Ruler-FIX
           path: AimHelper-Native-Overlay-v1/app/build/outputs/apk/debug/*.apk
