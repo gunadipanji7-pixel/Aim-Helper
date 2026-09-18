@@ -19,11 +19,13 @@ jobs:
       - name: Prepare Stage 2
         run: |
           curl -L -s https://raw.githubusercontent.com/gunadipanji7-pixel/Aim-Helper/8b7c2d8/.github/workflows/build.yml -o /tmp/stage2-template.yml
-
-          sed -n '20,614p' /tmp/stage2-template.yml \
-            | sed 's/^          //' \
-            > /tmp/prepare-stage2.sh
-
+          ruby -ryaml -e '
+            y = YAML.load_file("/tmp/stage2-template.yml")
+            s = y["jobs"]["build"]["steps"].find { |x| x["name"] == "Prepare Stage 2" }["run"]
+            s = s.lines[1..-1].join
+            s = s.gsub("resultCode == RESULT_OK", "resultCode == android.app.Activity.RESULT_OK")
+            File.write("/tmp/prepare-stage2.sh", s)
+          '
           chmod +x /tmp/prepare-stage2.sh
           bash /tmp/prepare-stage2.sh
 
@@ -32,7 +34,6 @@ jobs:
           FILE="AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/OverlayService.java"
           test -f "$FILE"
           sed -i 's/resultCode == RESULT_OK/resultCode == android.app.Activity.RESULT_OK/g' "$FILE"
-          echo "Checking RESULT_OK:"
           grep -n "resultCode.*RESULT_OK" "$FILE" || true
 
       - name: Set up Java 17
