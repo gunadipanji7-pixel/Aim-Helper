@@ -16,7 +16,7 @@ jobs:
       - name: Extract Android project
         run: unzip -q AimHelper-Native-Overlay-OnlineBuild.zip
 
-      - name: Prepare Stage 2
+      - name: Prepare Stage 3
         run: |
           curl -L -s https://raw.githubusercontent.com/gunadipanji7-pixel/Aim-Helper/8b7c2d8/.github/workflows/build.yml -o /tmp/stage2-template.yml
 
@@ -24,20 +24,207 @@ jobs:
             y = YAML.load_file("/tmp/stage2-template.yml")
             s = y["jobs"]["build"]["steps"].find { |x| x["name"] == "Prepare Stage 2" }["run"]
             s = s.gsub("resultCode == RESULT_OK", "resultCode == android.app.Activity.RESULT_OK")
-            File.write("/tmp/prepare-stage2.sh", s)
+            File.write("/tmp/prepare-stage3.sh", s)
           '
 
-          chmod +x /tmp/prepare-stage2.sh
-          bash /tmp/prepare-stage2.sh
+          chmod +x /tmp/prepare-stage3.sh
+          bash /tmp/prepare-stage3.sh
 
-      - name: Verify Stage 2 files
+      - name: Replace Stage 3 detector
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          file = Path(
+              "AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/OverlayService.java"
+          )
+
+          text = file.read_text()
+
+          start = text.index("private void processImage(ImageReader r)")
+          end = text.index("private Notification buildNotification()")
+
+          new_method = r'''private void processImage(ImageReader r) {
+
+              Image image = null;
+
+              try {
+                  image = r.acquireLatestImage();
+
+                  if (image == null) return;
+
+                  Image.Plane plane = image.getPlanes()[0];
+                  ByteBuffer buffer = plane.getBuffer();
+
+                  int pixelStride = plane.getPixelStride();
+                  int rowStride = plane.getRowStride();
+
+                  int width = image.getWidth();
+                  int height = image.getHeight();
+
+                  /*
+                   * Stage 3:
+                   * Mencari area putih yang berbentuk kompak seperti bola.
+                   * Tidak lagi memilih satu piksel putih paling terang.
+                   */
+
+                  int minX = (int)(width * 0.16f);
+                  int maxX = (int)(width * 0.86f);
+                  int minY = (int)(height * 0.22f);
+                  int maxY = (int)(height * 0.88f);
+
+                  int step = 8;
+                  int radius = 15;
+
+                  float bestScore = 0f;
+                  float bestX = -1;
+                  float bestY = -1;
+
+                  for (int y = minY; y < maxY; y += step) {
+
+                      for (int x = minX; x < maxX; x += step) {
+
+                          int whiteCount = 0;
+                          int sampleCount = 0;
+
+                          for (int dy = -radius; dy <= radius; dy += 3) {
+
+                              int yy = y + dy;
+
+                              if (yy < 0 || yy >= height) continue;
+
+                              for (int dx = -radius; dx <= radius; dx += 3) {
+
+                                  if ((dx * dx) + (dy * dy)
+                                      > radius * radius) {
+                                      continue;
+                                  }
+
+                                  int xx = x + dx;
+
+                                  if (xx < 0 || xx >= width) continue;
+
+                                  int offset =
+                                      yy * rowStride +
+                                      xx * pixelStride;
+
+                                  if (offset + 3 >= buffer.limit()) {
+                                      continue;
+                                  }
+
+                                  int rr = buffer.get(offset) & 0xff;
+                                  int gg = buffer.get(offset + 1) & 0xff;
+                                  int bb = buffer.get(offset + 2) & 0xff;
+
+                                  int brightness =
+                                      (rr + gg + bb) / 3;
+
+                                  int colorDifference =
+                                      Math.abs(rr - gg)
+                                      + Math.abs(gg - bb)
+                                      + Math.abs(rr - bb);
+
+                                  sampleCount++;
+
+                                  if (brightness > 205 &&
+                                      colorDifference < 45) {
+                                      whiteCount++;
+                                  }
+                              }
+                          }
+
+                          if (sampleCount == 0) continue;
+
+                          float whiteRatio =
+                              (float) whiteCount /
+                              (float) sampleCount;
+
+                          /*
+                           * Bola putih mempunyai area putih yang
+                           * cukup padat dan berbentuk lingkaran.
+                           */
+                          if (whiteRatio < 0.55f) continue;
+
+                          float centerScore =
+                              whiteRatio * 1000f;
+
+                          /*
+                           * Hindari area yang terlalu dekat dengan
+                           * tepi layar/UI.
+                           */
+                          if (x < width * 0.18f ||
+                              x > width * 0.84f) {
+                              centerScore -= 100f;
+                          }
+
+                          if (centerScore > bestScore) {
+                              bestScore = centerScore;
+                              bestX = x;
+                              bestY = y;
+                          }
+                      }
+                  }
+
+                  detectedX = bestX;
+                  detectedY = bestY;
+
+                  if (canvas != null) {
+                      canvas.postInvalidate();
+                  }
+
+                  if (panel != null) {
+                      final String status;
+
+                      if (bestX >= 0 && bestY >= 0) {
+                          status =
+                              "🎯 Aim Helper ON\n" +
+                              "Screen Capture: ON\n" +
+                              "Bola putih: TERDETEKSI";
+                      } else {
+                          status =
+                              "🎯 Aim Helper ON\n" +
+                              "Screen Capture: ON\n" +
+                              "Bola putih: mencari...";
+                      }
+
+                      panel.post(() -> panel.setText(status));
+                  }
+
+              } catch (Exception ignored) {
+              } finally {
+
+                  if (image != null) {
+                      image.close();
+                  }
+              }
+          }
+
+          '''
+
+          file.write_text(
+              text[:start] +
+              new_method +
+              text[end:]
+          )
+          PY
+
+      - name: Update Stage 3 label
+        run: |
+          sed -i 's/Native Overlay — Tahap 2/Native Overlay — Tahap 3/' \
+            AimHelper-Native-Overlay-v1/app/src/main/res/layout/activity_main.xml
+
+          sed -i 's/Native Overlay — Tahap 2/Native Overlay — Tahap 3/' \
+            AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/OverlayService.java
+
+      - name: Verify Stage 3 files
         run: |
           test -f AimHelper-Native-Overlay-v1/app/build.gradle
           test -f AimHelper-Native-Overlay-v1/app/src/main/AndroidManifest.xml
-          test -f AimHelper-Native-Overlay-v1/app/src/main/res/layout/activity_main.xml
           test -f AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/MainActivity.java
           test -f AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/OverlayService.java
-          echo "Stage 2 files OK"
+          grep -q "Bola putih: TERDETEKSI" \
+            AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/OverlayService.java
+          echo "Stage 3 files OK"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -58,5 +245,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AimHelper-APK-Stage2
+          name: AimHelper-APK-Stage3
           path: AimHelper-Native-Overlay-v1/app/build/outputs/apk/debug/*.apk
