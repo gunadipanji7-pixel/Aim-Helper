@@ -16,215 +16,897 @@ jobs:
       - name: Extract Android project
         run: unzip -q AimHelper-Native-Overlay-OnlineBuild.zip
 
-      - name: Prepare Stage 3
+      - name: Prepare Manual Ruler
         run: |
-          curl -L -s https://raw.githubusercontent.com/gunadipanji7-pixel/Aim-Helper/8b7c2d8/.github/workflows/build.yml -o /tmp/stage2-template.yml
+          PROJECT="AimHelper-Native-Overlay-v1"
 
-          ruby -ryaml -e '
-            y = YAML.load_file("/tmp/stage2-template.yml")
-            s = y["jobs"]["build"]["steps"].find { |x| x["name"] == "Prepare Stage 2" }["run"]
-            s = s.gsub("resultCode == RESULT_OK", "resultCode == android.app.Activity.RESULT_OK")
-            File.write("/tmp/prepare-stage3.sh", s)
-          '
+          cat > "$PROJECT/app/src/main/java/com/aimhelper/overlay/OverlayService.java" <<'JAVA'
+          package com.aimhelper.overlay;
 
-          chmod +x /tmp/prepare-stage3.sh
-          bash /tmp/prepare-stage3.sh
+          import android.app.Notification;
+          import android.app.NotificationChannel;
+          import android.app.NotificationManager;
+          import android.app.Service;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.graphics.Canvas;
+          import android.graphics.Color;
+          import android.graphics.Paint;
+          import android.graphics.Typeface;
+          import android.graphics.drawable.GradientDrawable;
+          import android.os.Build;
+          import android.os.IBinder;
+          import android.provider.Settings;
+          import android.view.Gravity;
+          import android.view.MotionEvent;
+          import android.view.View;
+          import android.view.WindowManager;
+          import android.widget.TextView;
 
-      - name: Replace Stage 3 detector
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
+          import java.util.Locale;
 
-          file = Path(
-              "AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/OverlayService.java"
-          )
+          public class OverlayService extends Service {
 
-          text = file.read_text()
+              private WindowManager wm;
+              private AimCanvas canvas;
+              private View startHandle;
+              private View tipHandle;
+              private TextView panel;
 
-          start = text.index("private void processImage(ImageReader r)")
-          end = text.index("private Notification buildNotification()")
+              private boolean enabled = true;
+              private int bounceCount = 1;
 
-          new_method = r'''private void processImage(ImageReader r) {
+              private float startX;
+              private float startY;
+              private float tipX;
+              private float tipY;
 
-              Image image = null;
+              private float tableL;
+              private float tableT;
+              private float tableR;
+              private float tableB;
 
-              try {
-                  image = r.acquireLatestImage();
+              private static final String CHANNEL =
+                      "aim_helper_overlay";
 
-                  if (image == null) return;
+              @Override
+              public void onCreate() {
+                  super.onCreate();
 
-                  Image.Plane plane = image.getPlanes()[0];
-                  ByteBuffer buffer = plane.getBuffer();
+                  createChannel();
+                  startForeground(7, buildNotification());
 
-                  int pixelStride = plane.getPixelStride();
-                  int rowStride = plane.getRowStride();
+                  wm = (WindowManager)
+                          getSystemService(WINDOW_SERVICE);
 
-                  int width = image.getWidth();
-                  int height = image.getHeight();
+                  showOverlay();
+              }
+
+              private void showOverlay() {
+
+                  if (!Settings.canDrawOverlays(this)) {
+                      stopSelf();
+                      return;
+                  }
+
+                  int sw =
+                          getResources().getDisplayMetrics().widthPixels;
+
+                  int sh =
+                          getResources().getDisplayMetrics().heightPixels;
 
                   /*
-                   * Stage 3:
-                   * Mencari area putih yang berbentuk kompak seperti bola.
-                   * Tidak lagi memilih satu piksel putih paling terang.
+                   * Area meja dibuat fleksibel berdasarkan ukuran layar.
                    */
+                  tableL = sw * 0.17f;
+                  tableR = sw * 0.86f;
+                  tableT = sh * 0.16f;
+                  tableB = sh * 0.91f;
 
-                  int minX = (int)(width * 0.16f);
-                  int maxX = (int)(width * 0.86f);
-                  int minY = (int)(height * 0.22f);
-                  int maxY = (int)(height * 0.88f);
+                  /*
+                   * Posisi awal mistar.
+                   */
+                  startX = sw * 0.56f;
+                  startY = sh * 0.56f;
 
-                  int step = 8;
-                  int radius = 15;
+                  tipX = sw * 0.56f;
+                  tipY = sh * 0.30f;
 
-                  float bestScore = 0f;
-                  float bestX = -1;
-                  float bestY = -1;
+                  /*
+                   * Canvas hanya menggambar.
+                   * Tidak menangkap sentuhan game.
+                   */
+                  WindowManager.LayoutParams drawParams =
+                          createParams(
+                                  -1,
+                                  -1,
+                                  WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                          );
 
-                  for (int y = minY; y < maxY; y += step) {
+                  canvas = new AimCanvas(this);
 
-                      for (int x = minX; x < maxX; x += step) {
+                  wm.addView(canvas, drawParams);
 
-                          int whiteCount = 0;
-                          int sampleCount = 0;
+                  /*
+                   * Handle bola putih.
+                   */
+                  startHandle = makeHandle("⚪");
 
-                          for (int dy = -radius; dy <= radius; dy += 3) {
+                  /*
+                   * Handle arah bidik.
+                   */
+                  tipHandle = makeHandle("🎯");
 
-                              int yy = y + dy;
+                  addHandle(startHandle, startX, startY);
+                  addHandle(tipHandle, tipX, tipY);
 
-                              if (yy < 0 || yy >= height) continue;
+                  /*
+                   * Panel kontrol kecil.
+                   */
+                  panel = new TextView(this);
 
-                              for (int dx = -radius; dx <= radius; dx += 3) {
+                  panel.setTextColor(Color.WHITE);
+                  panel.setTextSize(14);
+                  panel.setTypeface(
+                          Typeface.DEFAULT,
+                          Typeface.BOLD
+                  );
 
-                                  if ((dx * dx) + (dy * dy)
-                                      > radius * radius) {
-                                      continue;
+                  panel.setGravity(Gravity.CENTER);
+
+                  panel.setPadding(
+                          18,
+                          12,
+                          18,
+                          12
+                  );
+
+                  panel.setBackground(
+                          roundedBackground(
+                                  Color.argb(
+                                          220,
+                                          10,
+                                          25,
+                                          35
+                                  ),
+                                  Color.rgb(
+                                          57,
+                                          242,
+                                          122
+                                  ),
+                                  3
+                          )
+                  );
+
+                  panel.setText(
+                          "🎯 MISTAR ON\n" +
+                          "Sudut: 90.0°\n" +
+                          "Pantulan: 1"
+                  );
+
+                  /*
+                   * Tap panel untuk mengganti:
+                   * 1 -> 2 -> 3 -> 1
+                   */
+                  panel.setOnClickListener(v -> {
+
+                      bounceCount++;
+
+                      if (bounceCount > 3) {
+                          bounceCount = 1;
+                      }
+
+                      updatePanel();
+
+                      if (canvas != null) {
+                          canvas.invalidate();
+                      }
+                  });
+
+                  WindowManager.LayoutParams panelParams =
+                          createParams(
+                                  300,
+                                  125,
+                                  WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                          );
+
+                  panelParams.gravity =
+                          Gravity.TOP | Gravity.END;
+
+                  panelParams.x = 18;
+                  panelParams.y = 70;
+
+                  wm.addView(panel, panelParams);
+
+                  updatePanel();
+              }
+
+              private WindowManager.LayoutParams createParams(
+                      int width,
+                      int height,
+                      int flags
+              ) {
+
+                  return new WindowManager.LayoutParams(
+                          width,
+                          height,
+                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                          flags |
+                          WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                          android.graphics.PixelFormat.TRANSLUCENT
+                  );
+              }
+
+              private View makeHandle(String text) {
+
+                  TextView view = new TextView(this);
+
+                  view.setText(text);
+                  view.setTextSize(27);
+                  view.setGravity(Gravity.CENTER);
+                  view.setTextColor(Color.WHITE);
+
+                  view.setBackground(
+                          roundedBackground(
+                                  Color.argb(
+                                          190,
+                                          15,
+                                          35,
+                                          45
+                                  ),
+                                  Color.rgb(
+                                          57,
+                                          242,
+                                          122
+                                  ),
+                                  4
+                          )
+                  );
+
+                  return view;
+              }
+
+              private void addHandle(
+                      View view,
+                      float x,
+                      float y
+              ) {
+
+                  WindowManager.LayoutParams params =
+                          createParams(
+                                  72,
+                                  72,
+                                  WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                          );
+
+                  params.gravity =
+                          Gravity.TOP | Gravity.START;
+
+                  params.x = (int)x - 36;
+                  params.y = (int)y - 36;
+
+                  wm.addView(view, params);
+
+                  view.setTag(params);
+
+                  view.setOnTouchListener(
+                          new View.OnTouchListener() {
+
+                              float downX;
+                              float downY;
+
+                              int baseX;
+                              int baseY;
+
+                              @Override
+                              public boolean onTouch(
+                                      View v,
+                                      MotionEvent event
+                              ) {
+
+                                  WindowManager.LayoutParams lp =
+                                          (WindowManager.LayoutParams)
+                                                  v.getTag();
+
+                                  if (
+                                          event.getAction() ==
+                                          MotionEvent.ACTION_DOWN
+                                  ) {
+
+                                      downX =
+                                              event.getRawX();
+
+                                      downY =
+                                              event.getRawY();
+
+                                      baseX = lp.x;
+                                      baseY = lp.y;
+
+                                      return true;
                                   }
 
-                                  int xx = x + dx;
+                                  if (
+                                          event.getAction() ==
+                                          MotionEvent.ACTION_MOVE
+                                  ) {
 
-                                  if (xx < 0 || xx >= width) continue;
+                                      lp.x =
+                                              baseX +
+                                              (int)(
+                                                      event.getRawX()
+                                                      - downX
+                                              );
 
-                                  int offset =
-                                      yy * rowStride +
-                                      xx * pixelStride;
+                                      lp.y =
+                                              baseY +
+                                              (int)(
+                                                      event.getRawY()
+                                                      - downY
+                                              );
 
-                                  if (offset + 3 >= buffer.limit()) {
-                                      continue;
+                                      try {
+
+                                          wm.updateViewLayout(
+                                                  v,
+                                                  lp
+                                          );
+
+                                      } catch (Exception ignored) {
+                                      }
+
+                                      float cx =
+                                              lp.x + 36;
+
+                                      float cy =
+                                              lp.y + 36;
+
+                                      if (v == startHandle) {
+
+                                          startX = cx;
+                                          startY = cy;
+
+                                      } else {
+
+                                          tipX = cx;
+                                          tipY = cy;
+                                      }
+
+                                      if (canvas != null) {
+                                          canvas.invalidate();
+                                      }
+
+                                      updatePanel();
+
+                                      return true;
                                   }
 
-                                  int rr = buffer.get(offset) & 0xff;
-                                  int gg = buffer.get(offset + 1) & 0xff;
-                                  int bb = buffer.get(offset + 2) & 0xff;
-
-                                  int brightness =
-                                      (rr + gg + bb) / 3;
-
-                                  int colorDifference =
-                                      Math.abs(rr - gg)
-                                      + Math.abs(gg - bb)
-                                      + Math.abs(rr - bb);
-
-                                  sampleCount++;
-
-                                  if (brightness > 205 &&
-                                      colorDifference < 45) {
-                                      whiteCount++;
-                                  }
+                                  return true;
                               }
                           }
+                  );
+              }
 
-                          if (sampleCount == 0) continue;
+              private GradientDrawable roundedBackground(
+                      int fill,
+                      int stroke,
+                      int width
+              ) {
 
-                          float whiteRatio =
-                              (float) whiteCount /
-                              (float) sampleCount;
+                  GradientDrawable drawable =
+                          new GradientDrawable();
 
-                          /*
-                           * Bola putih mempunyai area putih yang
-                           * cukup padat dan berbentuk lingkaran.
-                           */
-                          if (whiteRatio < 0.55f) continue;
+                  drawable.setColor(fill);
+                  drawable.setCornerRadius(22);
+                  drawable.setStroke(
+                          width,
+                          stroke
+                  );
 
-                          float centerScore =
-                              whiteRatio * 1000f;
+                  return drawable;
+              }
 
-                          /*
-                           * Hindari area yang terlalu dekat dengan
-                           * tepi layar/UI.
-                           */
-                          if (x < width * 0.18f ||
-                              x > width * 0.84f) {
-                              centerScore -= 100f;
-                          }
+              private void updatePanel() {
 
-                          if (centerScore > bestScore) {
-                              bestScore = centerScore;
-                              bestX = x;
-                              bestY = y;
-                          }
+                  if (panel == null) {
+                      return;
+                  }
+
+                  double angle =
+                          Math.toDegrees(
+                                  Math.atan2(
+                                          tipY - startY,
+                                          tipX - startX
+                                  )
+                          );
+
+                  if (angle < 0) {
+                      angle += 360;
+                  }
+
+                  double distance =
+                          Math.hypot(
+                                  tipX - startX,
+                                  tipY - startY
+                          );
+
+                  panel.setText(
+                          "🎯 MISTAR ON\n" +
+                          "Sudut: " +
+                          String.format(
+                                  Locale.US,
+                                  "%.1f°",
+                                  angle
+                          ) +
+                          " • Jarak: " +
+                          (int)distance +
+                          "\nPantulan: " +
+                          bounceCount +
+                          " • Geser ⚪ & 🎯"
+                  );
+              }
+
+              /*
+               * Menghitung titik ketika garis mengenai
+               * salah satu sisi meja.
+               */
+              private float[] rayHit(
+                      float x,
+                      float y,
+                      float dx,
+                      float dy
+              ) {
+
+                  float best =
+                          Float.MAX_VALUE;
+
+                  float hitX =
+                          x + dx * 10000;
+
+                  float hitY =
+                          y + dy * 10000;
+
+                  if (dx > 0) {
+
+                      float t =
+                              (tableR - x) / dx;
+
+                      if (
+                              t > 0 &&
+                              t < best
+                      ) {
+
+                          best = t;
+                          hitX = x + dx * t;
+                          hitY = y + dy * t;
                       }
                   }
 
-                  detectedX = bestX;
-                  detectedY = bestY;
+                  if (dx < 0) {
 
-                  if (canvas != null) {
-                      canvas.postInvalidate();
-                  }
+                      float t =
+                              (tableL - x) / dx;
 
-                  if (panel != null) {
-                      final String status;
+                      if (
+                              t > 0 &&
+                              t < best
+                      ) {
 
-                      if (bestX >= 0 && bestY >= 0) {
-                          status =
-                              "🎯 Aim Helper ON\n" +
-                              "Screen Capture: ON\n" +
-                              "Bola putih: TERDETEKSI";
-                      } else {
-                          status =
-                              "🎯 Aim Helper ON\n" +
-                              "Screen Capture: ON\n" +
-                              "Bola putih: mencari...";
+                          best = t;
+                          hitX = x + dx * t;
+                          hitY = y + dy * t;
                       }
-
-                      panel.post(() -> panel.setText(status));
                   }
 
-              } catch (Exception ignored) {
-              } finally {
+                  if (dy > 0) {
 
-                  if (image != null) {
-                      image.close();
+                      float t =
+                              (tableB - y) / dy;
+
+                      if (
+                              t > 0 &&
+                              t < best
+                      ) {
+
+                          best = t;
+                          hitX = x + dx * t;
+                          hitY = y + dy * t;
+                      }
+                  }
+
+                  if (dy < 0) {
+
+                      float t =
+                              (tableT - y) / dy;
+
+                      if (
+                              t > 0 &&
+                              t < best
+                      ) {
+
+                          best = t;
+                          hitX = x + dx * t;
+                          hitY = y + dy * t;
+                      }
+                  }
+
+                  return new float[]{
+                          hitX,
+                          hitY
+                  };
+              }
+
+              private void drawDashedLine(
+                      Canvas c,
+                      Paint paint,
+                      float x1,
+                      float y1,
+                      float x2,
+                      float y2
+              ) {
+
+                  float dx = x2 - x1;
+                  float dy = y2 - y1;
+
+                  float length =
+                          (float)Math.hypot(
+                                  dx,
+                                  dy
+                          );
+
+                  if (length < 1) {
+                      return;
+                  }
+
+                  float ux = dx / length;
+                  float uy = dy / length;
+
+                  for (
+                          float d = 0;
+                          d < length;
+                          d += 28
+                  ) {
+
+                      float end =
+                              Math.min(
+                                      d + 14,
+                                      length
+                              );
+
+                      c.drawLine(
+                              x1 + ux * d,
+                              y1 + uy * d,
+                              x1 + ux * end,
+                              y1 + uy * end,
+                              paint
+                      );
                   }
               }
+
+              private class AimCanvas extends View {
+
+                  private final Paint paint =
+                          new Paint(
+                                  Paint.ANTI_ALIAS_FLAG
+                          );
+
+                  AimCanvas(Context context) {
+
+                      super(context);
+
+                      paint.setStrokeCap(
+                              Paint.Cap.ROUND
+                      );
+                  }
+
+                  @Override
+                  protected void onDraw(Canvas c) {
+
+                      super.onDraw(c);
+
+                      if (!enabled) {
+                          return;
+                      }
+
+                      /*
+                       * Garis utama mistar.
+                       */
+                      paint.setStyle(
+                              Paint.Style.STROKE
+                      );
+
+                      paint.setStrokeWidth(6);
+
+                      paint.setColor(
+                              Color.rgb(
+                                      57,
+                                      242,
+                                      122
+                              )
+                      );
+
+                      c.drawLine(
+                              startX,
+                              startY,
+                              tipX,
+                              tipY,
+                              paint
+                      );
+
+                      float dx =
+                              tipX - startX;
+
+                      float dy =
+                              tipY - startY;
+
+                      float length =
+                              (float)Math.hypot(
+                                      dx,
+                                      dy
+                              );
+
+                      if (length < 2) {
+                          return;
+                      }
+
+                      dx /= length;
+                      dy /= length;
+
+                      float x = tipX;
+                      float y = tipY;
+
+                      /*
+                       * Garis pantulan.
+                       */
+                      for (
+                              int i = 0;
+                              i < bounceCount;
+                              i++
+                      ) {
+
+                          float[] hit =
+                                  rayHit(
+                                          x,
+                                          y,
+                                          dx,
+                                          dy
+                                  );
+
+                          paint.setStrokeWidth(4);
+
+                          paint.setColor(
+                                  Color.WHITE
+                          );
+
+                          drawDashedLine(
+                                  c,
+                                  paint,
+                                  x,
+                                  y,
+                                  hit[0],
+                                  hit[1]
+                          );
+
+                          /*
+                           * Titik pantulan.
+                           */
+                          paint.setStyle(
+                                  Paint.Style.STROKE
+                          );
+
+                          paint.setStrokeWidth(3);
+
+                          paint.setColor(
+                                  Color.rgb(
+                                          255,
+                                          210,
+                                          60
+                                  )
+                          );
+
+                          c.drawCircle(
+                                  hit[0],
+                                  hit[1],
+                                  13,
+                                  paint
+                          );
+
+                          /*
+                           * Tentukan apakah mengenai
+                           * sisi kiri/kanan atau atas/bawah.
+                           */
+                          boolean vertical =
+                                  Math.abs(
+                                          hit[0] - tableL
+                                  ) < 2 ||
+                                  Math.abs(
+                                          hit[0] - tableR
+                                  ) < 2;
+
+                          x = hit[0];
+                          y = hit[1];
+
+                          if (vertical) {
+                              dx = -dx;
+                          } else {
+                              dy = -dy;
+                          }
+                      }
+
+                      /*
+                       * Lingkaran titik awal.
+                       */
+                      paint.setStyle(
+                              Paint.Style.STROKE
+                      );
+
+                      paint.setStrokeWidth(4);
+
+                      paint.setColor(
+                              Color.rgb(
+                                      57,
+                                      242,
+                                      122
+                              )
+                      );
+
+                      c.drawCircle(
+                              startX,
+                              startY,
+                              27,
+                              paint
+                      );
+
+                      /*
+                       * Lingkaran arah.
+                       */
+                      c.drawCircle(
+                              tipX,
+                              tipY,
+                              27,
+                              paint
+                      );
+
+                      /*
+                       * Label kecil.
+                       */
+                      paint.setStyle(
+                              Paint.Style.FILL
+                      );
+
+                      paint.setTextSize(26);
+
+                      paint.setColor(
+                              Color.WHITE
+                      );
+
+                      c.drawText(
+                              "MISTAR",
+                              startX + 32,
+                              startY - 28,
+                              paint
+                      );
+                  }
+              }
+
+              private Notification buildNotification() {
+
+                  return new Notification.Builder(
+                          this,
+                          CHANNEL
+                  )
+                          .setContentTitle(
+                                  "Aim Helper"
+                          )
+                          .setContentText(
+                                  "Mistar manual aktif"
+                          )
+                          .setSmallIcon(
+                                  android.R.drawable
+                                          .ic_menu_compass
+                          )
+                          .setOngoing(true)
+                          .build();
+              }
+
+              private void createChannel() {
+
+                  if (Build.VERSION.SDK_INT >= 26) {
+
+                      NotificationChannel channel =
+                              new NotificationChannel(
+                                      CHANNEL,
+                                      "Aim Helper Overlay",
+                                      NotificationManager
+                                              .IMPORTANCE_LOW
+                              );
+
+                      NotificationManager manager =
+                              (NotificationManager)
+                                      getSystemService(
+                                              Context
+                                                      .NOTIFICATION_SERVICE
+                                      );
+
+                      manager.createNotificationChannel(
+                              channel
+                      );
+                  }
+              }
+
+              @Override
+              public void onDestroy() {
+
+                  super.onDestroy();
+
+                  if (wm != null) {
+
+                      try {
+
+                          if (canvas != null) {
+                              wm.removeView(canvas);
+                          }
+
+                          if (startHandle != null) {
+                              wm.removeView(startHandle);
+                          }
+
+                          if (tipHandle != null) {
+                              wm.removeView(tipHandle);
+                          }
+
+                          if (panel != null) {
+                              wm.removeView(panel);
+                          }
+
+                      } catch (Exception ignored) {
+                      }
+                  }
+              }
+
+              @Override
+              public IBinder onBind(Intent intent) {
+                  return null;
+              }
           }
+          JAVA
 
-          '''
+          sed -i \
+            's/Native Overlay — Tahap 1/Mistar Manual + Pantulan/' \
+            "$PROJECT/app/src/main/res/layout/activity_main.xml"
 
-          file.write_text(
-              text[:start] +
-              new_method +
-              text[end:]
-          )
-          PY
+          sed -i \
+            's/Versi ini menguji apakah Aim Helper dapat tampil di atas aplikasi lain. Garis masih berupa demo; deteksi bola otomatis kita tambahkan setelah overlay berhasil./Versi ini menggunakan mistar manual yang dapat digeser untuk menentukan arah tembakan dan menghitung pantulan pada bantalan meja./' \
+            "$PROJECT/app/src/main/res/layout/activity_main.xml"
 
-      - name: Update Stage 3 label
-        run: |
-          sed -i 's/Native Overlay — Tahap 2/Native Overlay — Tahap 3/' \
-            AimHelper-Native-Overlay-v1/app/src/main/res/layout/activity_main.xml
+          sed -i \
+            's/1. Izinkan tampil di atas aplikasi/1. Izinkan tampil di atas aplikasi/' \
+            "$PROJECT/app/src/main/res/layout/activity_main.xml"
 
-          sed -i 's/Native Overlay — Tahap 2/Native Overlay — Tahap 3/' \
-            AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/OverlayService.java
+          sed -i \
+            's/2. Nyalakan Aim Helper Overlay/2. Nyalakan Mistar Manual/' \
+            "$PROJECT/app/src/main/res/layout/activity_main.xml"
 
-      - name: Verify Stage 3 files
+          sed -i \
+            's/Catatan: overlay ini hanya menggambar panduan visual. Tidak ada auto-click, auto-shot, atau pengendalian permainan./Catatan: mistar hanya memberikan panduan visual. Tidak ada auto-click, auto-shot, atau pengendalian permainan./' \
+            "$PROJECT/app/src/main/res/layout/activity_main.xml"
+
+          sed -i \
+            's/versionCode 2/versionCode 3/' \
+            "$PROJECT/app/build.gradle"
+
+          sed -i \
+            's/versionName '\''1.1'\''/versionName '\''1.2'\''/' \
+            "$PROJECT/app/build.gradle"
+
+      - name: Verify Stage 3
         run: |
           test -f AimHelper-Native-Overlay-v1/app/build.gradle
           test -f AimHelper-Native-Overlay-v1/app/src/main/AndroidManifest.xml
           test -f AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/MainActivity.java
           test -f AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/OverlayService.java
-          grep -q "Bola putih: TERDETEKSI" \
-            AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/OverlayService.java
-          echo "Stage 3 files OK"
+          grep -q "Mistar Manual + Pantulan" AimHelper-Native-Overlay-v1/app/src/main/res/layout/activity_main.xml
+          grep -q "bounceCount" AimHelper-Native-Overlay-v1/app/src/main/java/com/aimhelper/overlay/OverlayService.java
+          echo "Manual Ruler Stage 3 OK"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -245,5 +927,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AimHelper-APK-Stage3
+          name: AimHelper-APK-Manual-Ruler
           path: AimHelper-Native-Overlay-v1/app/build/outputs/apk/debug/*.apk
