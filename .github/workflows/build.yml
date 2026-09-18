@@ -16,9 +16,14 @@ jobs:
       - name: Extract Android project
         run: unzip -q AimHelper-Native-Overlay-OnlineBuild.zip
 
-      - name: Configure Android project
+      - name: Replace app files
+        env:
+          MAIN_B64: cGFja2FnZSBjb20uYWltaGVscGVyLm92ZXJsYXk7CgppbXBvcnQgYW5kcm9pZC5hcHAuQWN0aXZpdHk7CmltcG9ydCBhbmRyb2lkLmNvbnRlbnQuSW50ZW50OwppbXBvcnQgYW5kcm9pZC5uZXQuVXJpOwppbXBvcnQgYW5kcm9pZC5vcy5CdW5kbGU7CmltcG9ydCBhbmRyb2lkLnByb3ZpZGVyLlNldHRpbmdzOwppbXBvcnQgYW5kcm9pZC53aWRnZXQuQnV0dG9uOwppbXBvcnQgYW5kcm9pZC53aWRnZXQuVG9hc3Q7CgpwdWJsaWMgY2xhc3MgTWFpbkFjdGl2aXR5IGV4dGVuZHMgQWN0aXZpdHkgewogICAgQE92ZXJyaWRlCiAgICBwcm90ZWN0ZWQgdm9pZCBvbkNyZWF0ZShCdW5kbGUgc2F2ZWRJbnN0YW5jZVN0YXRlKSB7CiAgICAgICAgc3VwZXIub25DcmVhdGUoc2F2ZWRJbnN0YW5jZVN0YXRlKTsKICAgICAgICBzZXRDb250ZW50VmlldyhSLmxheW91dC5hY3Rpdml0eV9tYWluKTsKCiAgICAgICAgQnV0dG9uIHBlcm1pc3Npb24gPSBmaW5kVmlld0J5SWQoUi5pZC5idG5PdmVybGF5UGVybWlzc2lvbik7CiAgICAgICAgQnV0dG9uIHN0YXJ0ID0gZmluZFZpZXdCeUlkKFIuaWQuYnRuU3RhcnQpOwogICAgICAgIEJ1dHRvbiBzdG9wID0gZmluZFZpZXdCeUlkKFIuaWQuYnRuU3RvcCk7CgogICAgICAgIHBlcm1pc3Npb24uc2V0T25DbGlja0xpc3RlbmVyKHYgLT4gewogICAgICAgICAgICBpZiAoIVNldHRpbmdzLmNhbkRyYXdPdmVybGF5cyh0aGlzKSkgewogICAgICAgICAgICAgICAgc3RhcnRBY3Rpdml0eShuZXcgSW50ZW50KAogICAgICAgICAgICAgICAgICAgIFNldHRpbmdzLkFDVElPTl9NQU5BR0VfT1ZFUkxBWV9QRVJNSVNTSU9OLAogICAgICAgICAgICAgICAgICAgIFVyaS5wYXJzZSgicGFja2FnZToiICsgZ2V0UGFja2FnZU5hbWUoKQogICAgICAgICAgICAgICAgKSk7CiAgICAgICAgICAgIH0gZWxzZSB7CiAgICAgICAgICAgICAgICBUb2FzdC5tYWtlVGV4dChnZXRBcHBsaWNhdGlvbkNvbnRleHQoKSwKICAgICAgICAgICAgICAgICAgICAiSXppbiBvdmVybGF5IHN1ZGFoIGFrdGlmLiIsIFRvYXN0LkxFTkdUSF9TSE9SVCku c2hvdygpOwogICAgICAgICAgICB9CiAgICAgICAgfSk7CgogICAgICAgIHN0YXJ0LnNldE9uQ2xpY2tMaXN0ZW5lcigoVikgeyBpZiAoIVNldHRpbmdzLmNhbkRyYXdPdmVybGF5cyh0aGlzKSkgcmV0dXJuOyBJbnRlbnQgaSA9IG5ldyBJbnRlbnQodGhpcywgT3ZlcmxheVNlcnZpY2UuY2xhc3MpOyBpZiAoYW5kcm9pZC5vcy5CdWlsZC5WRVJTSU9OX1NESC5JTkYgPj0gMjYpIHN0YXJ0Rm9yZWdyb3VuZFNlcnZpY2UoaSk7IGVsc2Ugc3RhcnRTZXJ2aWNlKGkpOyBtb3ZlVGFza1RvQmFja3RydWUodHJ1ZSk7IH0pOwoKICAgICAgICBzdG9wLnNldE9uQ2xpY2tMaXN0ZW5lcigoVikgLT4gc3RvcFNlcnZpY2UobmV3IEludGVudCh0aGlzLCBPdmVybGF5U2VydmljZS5jbGFzcykpKTsKICAgIH0KfQo=
+          OVERLAY_B64: cGFja2FnZSBjb20uYWltaGVscGVyLm92ZXJsYXk7CgovLyBTT1VSQ0UgUkVEQUNURUQgQllFUkVEQ0hFQyBGT1IgU0FGRSBCVUlMRC4K
         run: |
           PROJECT="AimHelper-Native-Overlay-v1"
+
+          printf '%s' "$MAIN_B64" | base64 -d > "$PROJECT/app/src/main/java/com/aimhelper/overlay/MainActivity.java"
 
           cat > "$PROJECT/gradle.properties" <<'EOF'
           android.useAndroidX=true
@@ -33,25 +38,56 @@ jobs:
 
           android {
               namespace 'com.aimhelper.overlay'
-              compileSdk 35
+              compileSdk 34
 
               defaultConfig {
                   applicationId 'com.aimhelper.overlay'
-                  minSdk 23
-                  targetSdk 35
-                  versionCode 8
-                  versionName '1.7'
+                  minSdk 26
+                  targetSdk 34
+                  versionCode 9
+                  versionName '1.8'
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
               }
           }
           EOF
 
-      - name: Set Java
+      - name: Clean old Java sources
+        run: |
+          PROJECT="AimHelper-Native-Overlay-v1"
+
+          find "$PROJECT/app/src/main/java" -type f -name "*.kt" -delete
+
+          find "$PROJECT/app/src/main/java" -type f -name "*.java" \
+            ! -name "MainActivity.java" \
+            ! -name "OverlayService.java" \
+            -delete
+
+      - name: Verify project
+        run: |
+          PROJECT="AimHelper-Native-Overlay-v1"
+
+          test -s "$PROJECT/app/src/main/java/com/aimhelper/overlay/MainActivity.java"
+          test -s "$PROJECT/app/src/main/java/com/aimhelper/overlay/OverlayService.java"
+
+          grep -q "extends Activity" \
+            "$PROJECT/app/src/main/java/com/aimhelper/overlay/MainActivity.java"
+
+          grep -q "extends Service" \
+            "$PROJECT/app/src/main/java/com/aimhelper/overlay/OverlayService.java"
+
+          echo "Aim Helper source verified"
+
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.2.1'
@@ -59,10 +95,10 @@ jobs:
       - name: Build APK
         run: |
           cd AimHelper-Native-Overlay-v1
-          gradle assembleDebug --stacktrace
+          gradle clean assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AimHelper-APK-Analog
+          name: AimHelper-APK-Analog-v1.8
           path: AimHelper-Native-Overlay-v1/app/build/outputs/apk/debug/*.apk
