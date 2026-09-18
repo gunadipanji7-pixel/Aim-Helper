@@ -1,4 +1,4 @@
-name: Build Aim Helper APK
+name: Build Aim Helper Trainer
 
 on:
   workflow_dispatch:
@@ -11,29 +11,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Gradle 8.2.1
-        run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.2.1-bin.zip
-          unzip -q gradle-8.2.1-bin.zip
-          echo "$PWD/gradle-8.2.1/bin" >> "$GITHUB_PATH"
-
       - name: Create project
+        shell: bash
         run: |
+          rm -rf AimTrainer
+          mkdir -p AimTrainer/app/src/main/java/com/aimtrainer
+          mkdir -p AimTrainer/app/src/main/res/values
 
-          mkdir -p AimHelper/app/src/main/java/com/aimhelper/overlay
-          mkdir -p AimHelper/app/src/main/res/values
-
-          cat > AimHelper/settings.gradle <<'EOF'
+          cat > AimTrainer/settings.gradle <<'EOF'
           pluginManagement {
               repositories {
                   google()
@@ -44,44 +38,43 @@ jobs:
 
           dependencyResolutionManagement {
               repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-
               repositories {
                   google()
                   mavenCentral()
               }
           }
 
-          rootProject.name = "AimHelper"
-          include ":app"
+          rootProject.name = "AimTrainer"
+          include(":app")
           EOF
 
-          cat > AimHelper/build.gradle <<'EOF'
+          cat > AimTrainer/build.gradle <<'EOF'
           plugins {
               id 'com.android.application' version '8.2.2' apply false
           }
           EOF
 
-          cat > AimHelper/gradle.properties <<'EOF'
-          android.useAndroidX=true
-          android.enableJetifier=true
-          org.gradle.jvmargs=-Xmx2048m
+          cat > AimTrainer/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=false
+          android.enableJetifier=false
           EOF
 
-          cat > AimHelper/app/build.gradle <<'EOF'
+          cat > AimTrainer/app/build.gradle <<'EOF'
           plugins {
               id 'com.android.application'
           }
 
           android {
-              namespace 'com.aimhelper.overlay'
+              namespace 'com.aimtrainer'
               compileSdk 35
 
               defaultConfig {
-                  applicationId 'com.aimhelper.overlay'
+                  applicationId 'com.aimtrainer'
                   minSdk 23
                   targetSdk 35
-                  versionCode 13
-                  versionName '2.3'
+                  versionCode 1
+                  versionName '1.0'
               }
 
               compileOptions {
@@ -89,1558 +82,317 @@ jobs:
                   targetCompatibility JavaVersion.VERSION_17
               }
           }
-
-          configurations.configureEach {
-              exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
-              exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
-          }
           EOF
 
-          cat > AimHelper/app/src/main/res/values/strings.xml <<'EOF'
+          cat > AimTrainer/app/src/main/res/values/strings.xml <<'EOF'
           <resources>
-              <string name="app_name">Aim Helper</string>
+              <string name="app_name">Aim Trainer</string>
           </resources>
           EOF
 
-          cat > AimHelper/app/src/main/AndroidManifest.xml <<'EOF'
+          cat > AimTrainer/app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-              <uses-permission
-                  android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
 
               <application
+                  android:theme="@style/AppTheme"
+                  android:label="@string/app_name"
                   android:allowBackup="false"
-                  android:label="Aim Helper"
-                  android:supportsRtl="true"
-                  android:theme="@android:style/Theme.Material.Light.NoActionBar">
+                  android:supportsRtl="true">
 
                   <activity
                       android:name=".MainActivity"
                       android:exported="true">
 
                       <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
                       </intent-filter>
 
                   </activity>
-
-                  <service
-                      android:name=".OverlayService"
-                      android:exported="false" />
 
               </application>
 
           </manifest>
           EOF
 
-      - name: Create MainActivity
-        run: |
+          cat > AimTrainer/app/src/main/res/values/styles.xml <<'EOF'
+          <resources>
+              <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:colorAccent">#00E676</item>
+                  <item name="android:navigationBarColor">#000000</item>
+                  <item name="android:statusBarColor">#000000</item>
+              </style>
+          </resources>
+          EOF
 
-          cat > AimHelper/app/src/main/java/com/aimhelper/overlay/MainActivity.java <<'EOF'
-          package com.aimhelper.overlay;
+          cat > AimTrainer/app/src/main/java/com/aimtrainer/MainActivity.java <<'EOF'
+          package com.aimtrainer;
 
           import android.app.Activity;
-          import android.content.Intent;
-          import android.graphics.Color;
-          import android.net.Uri;
           import android.os.Bundle;
           import android.provider.Settings;
-          import android.view.Gravity;
+          import android.content.Intent;
+          import android.graphics.Color;
+          import android.graphics.Paint;
+          import android.graphics.Canvas;
+          import android.graphics.PointF;
+          import android.net.Uri;
+          import android.view.MotionEvent;
+          import android.view.View;
+          import android.view.WindowManager;
           import android.widget.Button;
           import android.widget.LinearLayout;
-          import android.widget.ScrollView;
           import android.widget.TextView;
 
           public class MainActivity extends Activity {
 
-              private int dp(float value) {
-                  return (int)(
-                          value *
-                          getResources()
-                                  .getDisplayMetrics()
-                                  .density +
-                          0.5f
-                  );
-              }
+              AimView aimView;
 
               @Override
-              protected void onCreate(Bundle state) {
-                  super.onCreate(state);
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
 
-                  ScrollView scroll =
-                          new ScrollView(this);
+                  LinearLayout root = new LinearLayout(this);
+                  root.setOrientation(LinearLayout.VERTICAL);
+                  root.setPadding(30, 30, 30, 30);
+                  root.setBackgroundColor(Color.rgb(18,18,18));
 
-                  scroll.setFillViewport(true);
-                  scroll.setBackgroundColor(
-                          Color.WHITE
-                  );
+                  TextView title = new TextView(this);
+                  title.setText("🎯 Aim Trainer");
+                  title.setTextColor(Color.WHITE);
+                  title.setTextSize(25);
+                  title.setPadding(0,0,0,20);
+                  root.addView(title);
 
-                  LinearLayout root =
-                          new LinearLayout(this);
-
-                  root.setOrientation(
-                          LinearLayout.VERTICAL
-                  );
-
-                  root.setPadding(
-                          dp(24),
-                          dp(25),
-                          dp(24),
-                          dp(30)
-                  );
-
-                  scroll.addView(
-                          root,
-                          new ScrollView.LayoutParams(
-                                  -1,
-                                  -1
-                          )
-                  );
-
-                  TextView title =
-                          new TextView(this);
-
-                  title.setText(
-                          "🎯 Aim Helper"
-                  );
-
-                  title.setTextSize(28);
-                  title.setTextColor(
-                          Color.BLACK
-                  );
-
-                  title.setGravity(
-                          Gravity.CENTER
-                  );
-
-                  root.addView(
-                          title,
-                          new LinearLayout.LayoutParams(
-                                  -1,
-                                  dp(70)
-                          )
-                  );
-
-                  TextView version =
-                          new TextView(this);
-
-                  version.setText(
-                          "MISTAR MANUAL • v2.3"
-                  );
-
-                  version.setTextSize(15);
-                  version.setTextColor(
-                          Color.DKGRAY
-                  );
-
-                  version.setGravity(
-                          Gravity.CENTER
-                  );
-
-                  root.addView(
-                          version,
-                          new LinearLayout.LayoutParams(
-                                  -1,
-                                  dp(45)
-                          )
-                  );
-
-                  TextView info =
-                          new TextView(this);
-
+                  TextView info = new TextView(this);
                   info.setText(
-                          "🎮 KONTROL ANALOG\\n\\n" +
-                          "TARGET: analog menggeser lingkaran target.\\n" +
-                          "PUTIH: analog menggeser titik awal garis putih.\\n\\n" +
-                          "Ketuk analog untuk berganti mode TARGET / PUTIH.\\n\\n" +
-                          "↪ Garis pantulan: 3 kali\\n" +
-                          "🚫 Tanpa auto-click / auto-shot"
+                      "Mode otomatis\\n\\n" +
+                      "Lingkaran target dan garis bidik dihitung oleh aplikasi.\\n" +
+                      "Tidak ada auto-click atau auto-shot."
                   );
-
+                  info.setTextColor(Color.LTGRAY);
                   info.setTextSize(16);
-                  info.setTextColor(
-                          Color.DKGRAY
-                  );
+                  root.addView(info);
 
-                  info.setPadding(
-                          dp(5),
-                          dp(10),
-                          dp(5),
-                          dp(25)
-                  );
+                  Button overlay = new Button(this);
+                  overlay.setText("Izinkan Overlay");
+                  root.addView(overlay);
 
-                  root.addView(
-                          info,
-                          new LinearLayout.LayoutParams(
-                                  -1,
-                                  -2
-                          )
-                  );
+                  Button start = new Button(this);
+                  start.setText("Nyalakan Aim Trainer");
+                  root.addView(start);
 
-                  Button permission =
-                          new Button(this);
-
-                  permission.setText(
-                          "1. IZINKAN OVERLAY"
-                  );
-
-                  root.addView(
-                          permission,
-                          new LinearLayout.LayoutParams(
-                                  -1,
-                                  dp(65)
-                          )
-                  );
-
-                  Button start =
-                          new Button(this);
-
-                  start.setText(
-                          "2. NYALAKAN AIM HELPER"
-                  );
-
-                  LinearLayout.LayoutParams startParams =
-                          new LinearLayout.LayoutParams(
-                                  -1,
-                                  dp(70)
+                  overlay.setOnClickListener(v -> {
+                      if (!Settings.canDrawOverlays(this)) {
+                          Intent i = new Intent(
+                              Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                              Uri.parse("package:" + getPackageName())
                           );
+                          startActivity(i);
+                      }
+                  });
 
-                  startParams.topMargin =
-                          dp(8);
-
-                  root.addView(
-                          start,
-                          startParams
-                  );
-
-                  Button stop =
-                          new Button(this);
-
-                  stop.setText(
-                          "3. MATIKAN AIM HELPER"
-                  );
-
-                  LinearLayout.LayoutParams stopParams =
-                          new LinearLayout.LayoutParams(
-                                  -1,
-                                  dp(70)
+                  start.setOnClickListener(v -> {
+                      if (!Settings.canDrawOverlays(this)) {
+                          Intent i = new Intent(
+                              Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                              Uri.parse("package:" + getPackageName())
                           );
-
-                  stopParams.topMargin =
-                          dp(8);
-
-                  root.addView(
-                          stop,
-                          stopParams
-                  );
-
-                  TextView help =
-                          new TextView(this);
-
-                  help.setText(
-                          "\\nCARA PAKAI\\n\\n" +
-                          "1. Izinkan overlay.\\n" +
-                          "2. Nyalakan Aim Helper.\\n" +
-                          "3. Buka 8 Ball Pool.\\n" +
-                          "4. Ketuk analog untuk memilih PUTIH atau TARGET.\\n" +
-                          "5. Gerakkan analog untuk memindahkan posisi.\\n" +
-                          "6. Garis putih menunjukkan arah bola putih ke target.\\n" +
-                          "7. Garis putus-putus menunjukkan 3 pantulan."
-                  );
-
-                  help.setTextSize(15);
-                  help.setTextColor(
-                          Color.DKGRAY
-                  );
-
-                  help.setPadding(
-                          dp(5),
-                          dp(20),
-                          dp(5),
-                          dp(30)
-                  );
-
-                  root.addView(
-                          help,
-                          new LinearLayout.LayoutParams(
-                                  -1,
-                                  -2
-                          )
-                  );
-
-                  permission.setOnClickListener(
-                          v -> {
-
-                              try {
-
-                                  Intent i =
-                                          new Intent(
-                                                  Settings
-                                                          .ACTION_MANAGE_OVERLAY_PERMISSION,
-                                                  Uri.parse(
-                                                          "package:" +
-                                                          getPackageName()
-                                                  )
-                                          );
-
-                                  startActivity(i);
-
-                              } catch (Exception e) {
-
-                                  startActivity(
-                                          new Intent(
-                                                  Settings
-                                                          .ACTION_MANAGE_OVERLAY_PERMISSION
-                                          )
-                                  );
-                              }
-                          }
-                  );
-
-                  start.setOnClickListener(
-                          v -> {
-
-                              if (Settings.canDrawOverlays(
-                                      this
-                              )) {
-
-                                  startService(
-                                          new Intent(
-                                                  this,
-                                                  OverlayService.class
-                                          )
-                                  );
-
-                              } else {
-
-                                  permission.performClick();
-                              }
-                          }
-                  );
-
-                  stop.setOnClickListener(
-                          v -> {
-
-                              stopService(
-                                      new Intent(
-                                              this,
-                                              OverlayService.class
-                                      )
-                              );
-                          }
-                  );
-
-                  setContentView(scroll);
-              }
-          }
-          EOF
-
-      - name: Create OverlayService
-        run: |
-
-          cat > AimHelper/app/src/main/java/com/aimhelper/overlay/OverlayService.java <<'EOF'
-          package com.aimhelper.overlay;
-
-          import android.app.Service;
-          import android.content.Intent;
-          import android.graphics.Canvas;
-          import android.graphics.Color;
-          import android.graphics.DashPathEffect;
-          import android.graphics.Paint;
-          import android.graphics.Path;
-          import android.os.IBinder;
-          import android.provider.Settings;
-          import android.view.Gravity;
-          import android.view.MotionEvent;
-          import android.view.View;
-          import android.view.WindowManager;
-          import android.widget.TextView;
-
-          public class OverlayService extends Service {
-
-              private WindowManager wm;
-
-              private AimCanvas canvas;
-              private TargetView target;
-              private JoystickView joystick;
-              private TextView panel;
-
-              private WindowManager.LayoutParams canvasParams;
-              private WindowManager.LayoutParams targetParams;
-              private WindowManager.LayoutParams joystickParams;
-              private WindowManager.LayoutParams panelParams;
-
-              // ==========================================
-              // POSISI BOLA PUTIH
-              // ==========================================
-
-              private float whiteX = 0.38f;
-              private float whiteY = 0.58f;
-
-              // ==========================================
-              // POSISI TARGET
-              // ==========================================
-
-              private float targetX = 0.63f;
-              private float targetY = 0.43f;
-
-              // true = target
-              // false = bola putih
-              private boolean controlTarget = true;
-
-              private float tableL;
-              private float tableR;
-              private float tableT;
-              private float tableB;
-
-              @Override
-              public void onCreate() {
-                  super.onCreate();
-
-                  if (!Settings.canDrawOverlays(
-                          this
-                  )) {
-
-                      stopSelf();
-                      return;
-                  }
-
-                  wm =
-                          (WindowManager)
-                          getSystemService(
-                                  WINDOW_SERVICE
-                          );
-
-                  createCanvas();
-                  createTarget();
-                  createJoystick();
-                  createPanel();
-              }
-
-              private int overlayType() {
-
-                  return WindowManager
-                          .LayoutParams
-                          .TYPE_APPLICATION_OVERLAY;
-              }
-
-              // ==========================================
-              // CANVAS
-              // ==========================================
-
-              private void createCanvas() {
-
-                  canvas =
-                          new AimCanvas();
-
-                  canvasParams =
-                          new WindowManager.LayoutParams(
-                                  -1,
-                                  -1,
-                                  overlayType(),
-                                  WindowManager
-                                          .LayoutParams
-                                          .FLAG_NOT_FOCUSABLE |
-                                  WindowManager
-                                          .LayoutParams
-                                          .FLAG_NOT_TOUCHABLE |
-                                  WindowManager
-                                          .LayoutParams
-                                          .FLAG_LAYOUT_IN_SCREEN,
-                                  -3
-                          );
-
-                  canvasParams.gravity =
-                          Gravity.TOP |
-                          Gravity.LEFT;
-
-                  wm.addView(
-                          canvas,
-                          canvasParams
-                  );
-              }
-
-              // ==========================================
-              // TARGET
-              // ==========================================
-
-              private void createTarget() {
-
-                  target =
-                          new TargetView();
-
-                  targetParams =
-                          new WindowManager.LayoutParams(
-                                  70,
-                                  70,
-                                  overlayType(),
-                                  WindowManager
-                                          .LayoutParams
-                                          .FLAG_NOT_FOCUSABLE,
-                                  -3
-                          );
-
-                  targetParams.gravity =
-                          Gravity.TOP |
-                          Gravity.LEFT;
-
-                  wm.addView(
-                          target,
-                          targetParams
-                  );
-
-                  target.post(
-                          this::updateTargetPosition
-                  );
-              }
-
-              private void updateTargetPosition() {
-
-                  if (canvas == null ||
-                      target == null) {
-                      return;
-                  }
-
-                  int w =
-                          canvas.getWidth();
-
-                  int h =
-                          canvas.getHeight();
-
-                  if (w <= 0 ||
-                      h <= 0) {
-                      return;
-                  }
-
-                  tableL =
-                          w * 0.17f;
-
-                  tableR =
-                          w * 0.86f;
-
-                  tableT =
-                          h * 0.16f;
-
-                  tableB =
-                          h * 0.91f;
-
-                  targetX =
-                          clamp(
-                                  targetX,
-                                  tableL / w,
-                                  tableR / w
-                          );
-
-                  targetY =
-                          clamp(
-                                  targetY,
-                                  tableT / h,
-                                  tableB / h
-                          );
-
-                  targetParams.x =
-                          (int)(
-                                  w * targetX
-                          ) - 35;
-
-                  targetParams.y =
-                          (int)(
-                                  h * targetY
-                          ) - 35;
-
-                  try {
-
-                      wm.updateViewLayout(
-                              target,
-                              targetParams
-                      );
-
-                  } catch (
-                          Exception ignored
-                  ) {
-                  }
-
-                  canvas.invalidate();
-              }
-
-              // ==========================================
-              // JOYSTICK
-              // ==========================================
-
-              private void createJoystick() {
-
-                  joystick =
-                          new JoystickView();
-
-                  joystickParams =
-                          new WindowManager.LayoutParams(
-                                  180,
-                                  180,
-                                  overlayType(),
-                                  WindowManager
-                                          .LayoutParams
-                                          .FLAG_NOT_FOCUSABLE,
-                                  -3
-                          );
-
-                  joystickParams.gravity =
-                          Gravity.TOP |
-                          Gravity.LEFT;
-
-                  joystickParams.x = 30;
-                  joystickParams.y = 650;
-
-                  wm.addView(
-                          joystick,
-                          joystickParams
-                  );
-              }
-
-              // ==========================================
-              // PANEL
-              // ==========================================
-
-              private void createPanel() {
-
-                  panel =
-                          new TextView(this);
-
-                  updatePanelText();
-
-                  panel.setTextColor(
-                          Color.WHITE
-                  );
-
-                  panel.setTextSize(13);
-
-                  panel.setGravity(
-                          Gravity.CENTER
-                  );
-
-                  panel.setPadding(
-                          12,
-                          8,
-                          12,
-                          8
-                  );
-
-                  panel.setBackgroundColor(
-                          Color.argb(
-                                  195,
-                                  20,
-                                  20,
-                                  20
-                          )
-                  );
-
-                  panelParams =
-                          new WindowManager.LayoutParams(
-                                  260,
-                                  92,
-                                  overlayType(),
-                                  WindowManager
-                                          .LayoutParams
-                                          .FLAG_NOT_FOCUSABLE,
-                                  -3
-                          );
-
-                  panelParams.gravity =
-                          Gravity.TOP |
-                          Gravity.RIGHT;
-
-                  panelParams.x = 15;
-                  panelParams.y = 70;
-
-                  panel.setOnTouchListener(
-                          new View.OnTouchListener() {
-
-                              float downX;
-                              float downY;
-
-                              int startX;
-                              int startY;
-
-                              @Override
-                              public boolean onTouch(
-                                      View v,
-                                      MotionEvent e
-                              ) {
-
-                                  if (e.getAction() ==
-                                          MotionEvent
-                                                  .ACTION_DOWN) {
-
-                                      downX =
-                                              e.getRawX();
-
-                                      downY =
-                                              e.getRawY();
-
-                                      startX =
-                                              panelParams.x;
-
-                                      startY =
-                                              panelParams.y;
-
-                                      return true;
-                                  }
-
-                                  if (e.getAction() ==
-                                          MotionEvent
-                                                  .ACTION_MOVE) {
-
-                                      panelParams.x =
-                                              startX +
-                                              (int)(
-                                                      e.getRawX()
-                                                      - downX
-                                              );
-
-                                      panelParams.y =
-                                              startY +
-                                              (int)(
-                                                      e.getRawY()
-                                                      - downY
-                                              );
-
-                                      try {
-
-                                          wm.updateViewLayout(
-                                                  panel,
-                                                  panelParams
-                                          );
-
-                                      } catch (
-                                              Exception ignored
-                                      ) {
-                                      }
-
-                                      return true;
-                                  }
-
-                                  return true;
-                              }
-                          }
-                  );
-
-                  wm.addView(
-                          panel,
-                          panelParams
-                  );
-              }
-
-              private void updatePanelText() {
-
-                  if (panel == null) {
-                      return;
-                  }
-
-                  if (controlTarget) {
-
-                      panel.setText(
-                              "🎯 TARGET MODE\\n" +
-                              "🎮 ANALOG → TARGET\\n" +
-                              "↪ 3 PANTULAN"
-                      );
-
-                  } else {
-
-                      panel.setText(
-                              "⚪ PUTIH MODE\\n" +
-                              "🎮 ANALOG → BOLA PUTIH\\n" +
-                              "↪ 3 PANTULAN"
-                      );
-                  }
-              }
-
-              // ==========================================
-              // TARGET VIEW
-              // ==========================================
-
-              private class TargetView
-                      extends View {
-
-                  private final Paint p =
-                          new Paint(
-                                  Paint.ANTI_ALIAS_FLAG
-                          );
-
-                  TargetView() {
-
-                      super(
-                              OverlayService.this
-                      );
-                  }
-
-                  @Override
-                  protected void onDraw(
-                          Canvas c
-                  ) {
-
-                      super.onDraw(c);
-
-                      float cx =
-                              getWidth() / 2f;
-
-                      float cy =
-                              getHeight() / 2f;
-
-                      p.setStyle(
-                              Paint.Style.STROKE
-                      );
-
-                      p.setStrokeWidth(3);
-
-                      p.setColor(
-                              Color.WHITE
-                      );
-
-                      p.setAlpha(235);
-
-                      c.drawCircle(
-                              cx,
-                              cy,
-                              22,
-                              p
-                      );
-
-                      p.setStrokeWidth(2);
-
-                      p.setColor(
-                              Color.GREEN
-                      );
-
-                      p.setAlpha(180);
-
-                      c.drawCircle(
-                              cx,
-                              cy,
-                              29,
-                              p
-                      );
-
-                      p.setStyle(
-                              Paint.Style.FILL
-                      );
-
-                      p.setColor(
-                              Color.WHITE
-                      );
-
-                      p.setAlpha(220);
-
-                      c.drawCircle(
-                              cx,
-                              cy,
-                              3,
-                              p
-                      );
-                  }
-              }
-
-              // ==========================================
-              // JOYSTICK VIEW
-              // ==========================================
-
-              private class JoystickView
-                      extends View {
-
-                  private final Paint p =
-                          new Paint(
-                                  Paint.ANTI_ALIAS_FLAG
-                          );
-
-                  private float downX;
-                  private float downY;
-
-                  private boolean moved;
-
-                  JoystickView() {
-
-                      super(
-                              OverlayService.this
-                      );
-                  }
-
-                  @Override
-                  protected void onDraw(
-                          Canvas c
-                  ) {
-
-                      super.onDraw(c);
-
-                      float cx =
-                              getWidth() / 2f;
-
-                      float cy =
-                              getHeight() / 2f;
-
-                      p.setStyle(
-                              Paint.Style.STROKE
-                      );
-
-                      p.setStrokeWidth(4);
-
-                      p.setColor(
-                              Color.WHITE
-                      );
-
-                      p.setAlpha(170);
-
-                      c.drawCircle(
-                              cx,
-                              cy,
-                              62,
-                              p
-                      );
-
-                      p.setStyle(
-                              Paint.Style.FILL
-                      );
-
-                      if (controlTarget) {
-
-                          p.setColor(
-                                  Color.argb(
-                                          115,
-                                          0,
-                                          255,
-                                          0
-                                  )
-                          );
-
-                      } else {
-
-                          p.setColor(
-                                  Color.argb(
-                                          115,
-                                          80,
-                                          180,
-                                          255
-                                  )
-                          );
+                          startActivity(i);
+                          return;
                       }
 
-                      c.drawCircle(
-                              cx,
-                              cy,
-                              38,
-                              p
+                      showTrainer();
+                  });
+
+                  setContentView(root);
+              }
+
+              private void showTrainer() {
+                  aimView = new AimView();
+
+                  WindowManager wm =
+                      (WindowManager)getSystemService(WINDOW_SERVICE);
+
+                  WindowManager.LayoutParams lp =
+                      new WindowManager.LayoutParams(
+                          WindowManager.LayoutParams.MATCH_PARENT,
+                          WindowManager.LayoutParams.MATCH_PARENT,
+                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                          WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                          android.graphics.PixelFormat.TRANSLUCENT
                       );
 
-                      p.setColor(
-                              Color.WHITE
+                  wm.addView(aimView, lp);
+              }
+
+              class AimView extends View {
+
+                  Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
+                  Paint target = new Paint(Paint.ANTI_ALIAS_FLAG);
+                  Paint panel = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+                  PointF white = new PointF(300, 900);
+                  PointF ball = new PointF(650, 500);
+
+                  boolean dragging = false;
+
+                  AimView() {
+                      super(MainActivity.this);
+
+                      line.setStrokeWidth(7);
+                      line.setColor(Color.WHITE);
+                      line.setStyle(Paint.Style.STROKE);
+
+                      target.setStrokeWidth(5);
+                      target.setColor(Color.GREEN);
+                      target.setStyle(Paint.Style.STROKE);
+
+                      panel.setColor(0xCC111111);
+                  }
+
+                  @Override
+                  protected void onDraw(Canvas c) {
+                      super.onDraw(c);
+
+                      float dx = ball.x - white.x;
+                      float dy = ball.y - white.y;
+                      float length = (float)Math.sqrt(dx*dx + dy*dy);
+
+                      if (length < 1) return;
+
+                      float ux = dx / length;
+                      float uy = dy / length;
+
+                      // Garis bidik utama
+                      c.drawLine(
+                          white.x,
+                          white.y,
+                          ball.x,
+                          ball.y,
+                          line
                       );
 
-                      p.setAlpha(240);
-
+                      // Lingkaran target
                       c.drawCircle(
-                              cx,
-                              cy,
-                              15,
-                              p
+                          ball.x,
+                          ball.y,
+                          30,
+                          target
+                      );
+
+                      // Garis setelah target
+                      float endX = ball.x + ux * 500;
+                      float endY = ball.y + uy * 500;
+
+                      line.setColor(0xAAFFFFFF);
+                      line.setStrokeWidth(4);
+
+                      c.drawLine(
+                          ball.x,
+                          ball.y,
+                          endX,
+                          endY,
+                          line
+                      );
+
+                      // Pantulan meja
+                      float rx = endX;
+                      float ry = endY;
+
+                      if (rx < 0 || rx > getWidth()) {
+                          ux = -ux;
+                          rx = ball.x + ux * 400;
+                          ry = ball.y + uy * 400;
+                      }
+
+                      if (ry < 0 || ry > getHeight()) {
+                          uy = -uy;
+                          rx = ball.x + ux * 400;
+                          ry = ball.y + uy * 400;
+                      }
+
+                      line.setColor(0xAA00FF88);
+                      c.drawLine(
+                          ball.x,
+                          ball.y,
+                          rx,
+                          ry,
+                          line
+                      );
+
+                      // Panel status
+                      c.drawRoundRect(
+                          30, 40, 390, 125,
+                          20, 20, panel
+                      );
+
+                      Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+                      text.setColor(Color.WHITE);
+                      text.setTextSize(25);
+
+                      c.drawText(
+                          "🎯 AIM TRAINER • AUTO",
+                          50, 78, text
+                      );
+
+                      text.setTextSize(18);
+                      c.drawText(
+                          "TARGET",
+                          50, 108, text
                       );
                   }
 
                   @Override
-                  public boolean onTouchEvent(
-                          MotionEvent e
-                  ) {
+                  public boolean onTouchEvent(MotionEvent e) {
 
-                      if (e.getAction() ==
-                              MotionEvent
-                                      .ACTION_DOWN) {
+                      if (e.getAction() == MotionEvent.ACTION_DOWN) {
+                          float dx = e.getX() - ball.x;
+                          float dy = e.getY() - ball.y;
 
-                          downX =
-                                  e.getRawX();
+                          if (dx*dx + dy*dy < 70*70) {
+                              dragging = true;
+                              return true;
+                          }
+                      }
 
-                          downY =
-                                  e.getRawY();
-
-                          moved = false;
-
+                      if (e.getAction() == MotionEvent.ACTION_MOVE && dragging) {
+                          ball.x = e.getX();
+                          ball.y = e.getY();
+                          invalidate();
                           return true;
                       }
 
-                      if (e.getAction() ==
-                              MotionEvent
-                                      .ACTION_MOVE) {
-
-                          float dx =
-                                  e.getRawX()
-                                  - downX;
-
-                          float dy =
-                                  e.getRawY()
-                                  - downY;
-
-                          if (Math.abs(dx) > 5 ||
-                              Math.abs(dy) > 5) {
-
-                              moved = true;
-
-                              moveSelected(
-                                      dx,
-                                      dy
-                              );
-
-                              downX =
-                                      e.getRawX();
-
-                              downY =
-                                      e.getRawY();
-                          }
-
-                          return true;
-                      }
-
-                      if (e.getAction() ==
-                              MotionEvent
-                                      .ACTION_UP) {
-
-                          // Ketukan tanpa gerakan
-                          // mengganti mode.
-                          if (!moved) {
-
-                              controlTarget =
-                                      !controlTarget;
-
-                              updatePanelText();
-
-                              invalidate();
-                          }
-
+                      if (e.getAction() == MotionEvent.ACTION_UP) {
+                          dragging = false;
                           return true;
                       }
 
                       return true;
                   }
               }
-
-              // ==========================================
-              // PINDAHKAN OBJEK DENGAN ANALOG
-              // ==========================================
-
-              private void moveSelected(
-                      float dx,
-                      float dy
-              ) {
-
-                  int w =
-                          canvas.getWidth();
-
-                  int h =
-                          canvas.getHeight();
-
-                  if (w <= 0 ||
-                      h <= 0) {
-                      return;
-                  }
-
-                  if (controlTarget) {
-
-                      targetX +=
-                              dx / w * 1.5f;
-
-                      targetY +=
-                              dy / h * 1.5f;
-
-                      targetX =
-                              clamp(
-                                      targetX,
-                                      tableL / w,
-                                      tableR / w
-                              );
-
-                      targetY =
-                              clamp(
-                                      targetY,
-                                      tableT / h,
-                                      tableB / h
-                              );
-
-                      updateTargetPosition();
-
-                  } else {
-
-                      // Gerakkan posisi awal
-                      // garis putih / bola putih.
-                      whiteX +=
-                              dx / w * 1.5f;
-
-                      whiteY +=
-                              dy / h * 1.5f;
-
-                      whiteX =
-                              clamp(
-                                      whiteX,
-                                      tableL / w,
-                                      tableR / w
-                              );
-
-                      whiteY =
-                              clamp(
-                                      whiteY,
-                                      tableT / h,
-                                      tableB / h
-                              );
-
-                      canvas.invalidate();
-                  }
-              }
-
-              // ==========================================
-              // GARIS
-              // ==========================================
-
-              private class AimCanvas
-                      extends View {
-
-                  private final Paint solid =
-                          new Paint(
-                                  Paint.ANTI_ALIAS_FLAG
-                          );
-
-                  private final Paint dashed =
-                          new Paint(
-                                  Paint.ANTI_ALIAS_FLAG
-                          );
-
-                  AimCanvas() {
-
-                      super(
-                              OverlayService.this
-                      );
-
-                      dashed.setStyle(
-                              Paint.Style.STROKE
-                      );
-
-                      dashed.setStrokeWidth(4);
-
-                      dashed.setPathEffect(
-                              new DashPathEffect(
-                                      new float[]{
-                                              18,
-                                              12
-                                      },
-                                      0
-                              )
-                      );
-                  }
-
-                  @Override
-                  protected void onDraw(
-                          Canvas c
-                  ) {
-
-                      super.onDraw(c);
-
-                      float w =
-                              getWidth();
-
-                      float h =
-                              getHeight();
-
-                      tableL =
-                              w * 0.17f;
-
-                      tableR =
-                              w * 0.86f;
-
-                      tableT =
-                              h * 0.16f;
-
-                      tableB =
-                              h * 0.91f;
-
-                      float sx =
-                              w * whiteX;
-
-                      float sy =
-                              h * whiteY;
-
-                      float tx =
-                              w * targetX;
-
-                      float ty =
-                              h * targetY;
-
-                      // =================================
-                      // GARIS PUTIH
-                      // BOLA PUTIH -> TARGET
-                      // =================================
-
-                      solid.setStyle(
-                              Paint.Style.STROKE
-                      );
-
-                      solid.setStrokeWidth(5);
-
-                      solid.setColor(
-                              Color.WHITE
-                      );
-
-                      solid.setAlpha(235);
-
-                      c.drawLine(
-                              sx,
-                              sy,
-                              tx,
-                              ty,
-                              solid
-                      );
-
-                      // =================================
-                      // TANDA POSISI BOLA PUTIH
-                      // =================================
-
-                      solid.setStyle(
-                              Paint.Style.STROKE
-                      );
-
-                      solid.setStrokeWidth(2);
-
-                      solid.setColor(
-                              Color.WHITE
-                      );
-
-                      solid.setAlpha(150);
-
-                      c.drawCircle(
-                              sx,
-                              sy,
-                              18,
-                              solid
-                      );
-
-                      // =================================
-                      // 3 PANTULAN
-                      // =================================
-
-                      drawThreeBounces(
-                              c,
-                              tx,
-                              ty,
-                              tx - sx,
-                              ty - sy
-                      );
-                  }
-
-                  private void drawThreeBounces(
-                          Canvas c,
-                          float x,
-                          float y,
-                          float dx,
-                          float dy
-                  ) {
-
-                      if (Math.abs(dx) < 0.001f &&
-                          Math.abs(dy) < 0.001f) {
-
-                          return;
-                      }
-
-                      Path path =
-                              new Path();
-
-                      path.moveTo(
-                              x,
-                              y
-                      );
-
-                      // TEPAT 3 PANTULAN
-                      for (
-                              int bounce = 0;
-                              bounce < 3;
-                              bounce++
-                      ) {
-
-                          float bestT =
-                                  Float.MAX_VALUE;
-
-                          int side = 0;
-
-                          // KIRI
-                          if (dx < 0) {
-
-                              float t =
-                                      (tableL - x)
-                                      / dx;
-
-                              if (t > 0 &&
-                                  t < bestT) {
-
-                                  bestT = t;
-                                  side = 1;
-                              }
-                          }
-
-                          // KANAN
-                          if (dx > 0) {
-
-                              float t =
-                                      (tableR - x)
-                                      / dx;
-
-                              if (t > 0 &&
-                                  t < bestT) {
-
-                                  bestT = t;
-                                  side = 2;
-                              }
-                          }
-
-                          // ATAS
-                          if (dy < 0) {
-
-                              float t =
-                                      (tableT - y)
-                                      / dy;
-
-                              if (t > 0 &&
-                                  t < bestT) {
-
-                                  bestT = t;
-                                  side = 3;
-                              }
-                          }
-
-                          // BAWAH
-                          if (dy > 0) {
-
-                              float t =
-                                      (tableB - y)
-                                      / dy;
-
-                              if (t > 0 &&
-                                  t < bestT) {
-
-                                  bestT = t;
-                                  side = 4;
-                              }
-                          }
-
-                          if (bestT ==
-                                  Float.MAX_VALUE) {
-
-                              break;
-                          }
-
-                          float bx =
-                                  x +
-                                  dx *
-                                  bestT;
-
-                          float by =
-                                  y +
-                                  dy *
-                                  bestT;
-
-                          bx =
-                                  clamp(
-                                          bx,
-                                          tableL,
-                                          tableR
-                                  );
-
-                          by =
-                                  clamp(
-                                          by,
-                                          tableT,
-                                          tableB
-                                  );
-
-                          path.lineTo(
-                                  bx,
-                                  by
-                          );
-
-                          // REFLEKSI
-                          if (side == 1 ||
-                              side == 2) {
-
-                              dx = -dx;
-
-                          } else if (
-                                  side == 3 ||
-                                  side == 4) {
-
-                              dy = -dy;
-                          }
-
-                          x = bx;
-                          y = by;
-                      }
-
-                      float length =
-                              Math.max(
-                                      getWidth(),
-                                      getHeight()
-                              ) * 0.7f;
-
-                      float endX =
-                              x +
-                              dx *
-                              length;
-
-                      float endY =
-                              y +
-                              dy *
-                              length;
-
-                      endX =
-                              clamp(
-                                      endX,
-                                      tableL,
-                                      tableR
-                              );
-
-                      endY =
-                              clamp(
-                                      endY,
-                                      tableT,
-                                      tableB
-                              );
-
-                      path.lineTo(
-                              endX,
-                              endY
-                      );
-
-                      dashed.setStyle(
-                              Paint.Style.STROKE
-                      );
-
-                      dashed.setStrokeWidth(4);
-
-                      dashed.setColor(
-                              Color.WHITE
-                      );
-
-                      dashed.setAlpha(220);
-
-                      c.drawPath(
-                              path,
-                              dashed
-                      );
-                  }
-              }
-
-              private float clamp(
-                      float value,
-                      float min,
-                      float max
-              ) {
-
-                  return Math.max(
-                          min,
-                          Math.min(
-                                  max,
-                                  value
-                          )
-                  );
-              }
-
-              @Override
-              public int onStartCommand(
-                      Intent intent,
-                      int flags,
-                      int startId
-              ) {
-
-                  return START_STICKY;
-              }
-
-              @Override
-              public void onDestroy() {
-
-                  try {
-
-                      if (panel != null)
-                          wm.removeView(
-                                  panel
-                          );
-
-                  } catch (
-                          Exception ignored
-                  ) {
-                  }
-
-                  try {
-
-                      if (joystick != null)
-                          wm.removeView(
-                                  joystick
-                          );
-
-                  } catch (
-                          Exception ignored
-                  ) {
-                  }
-
-                  try {
-
-                      if (target != null)
-                          wm.removeView(
-                                  target
-                          );
-
-                  } catch (
-                          Exception ignored
-                  ) {
-                  }
-
-                  try {
-
-                      if (canvas != null)
-                          wm.removeView(
-                                  canvas
-                          );
-
-                  } catch (
-                          Exception ignored
-                  ) {
-                  }
-
-                  super.onDestroy();
-              }
-
-              @Override
-              public IBinder onBind(
-                      Intent intent
-              ) {
-
-                  return null;
-              }
           }
           EOF
 
-      - name: Verify Gradle
+      - name: Download Gradle
         run: |
-          cd AimHelper
-          gradle --version
-          gradle tasks --no-daemon
-
-      - name: Clean
-        run: |
-          cd AimHelper
-          gradle clean --no-daemon
+          cd AimTrainer
+          curl -L -o gradle.zip \
+            https://services.gradle.org/distributions/gradle-8.2.1-bin.zip
+          unzip -q gradle.zip
+          mv gradle-8.2.1 gradle-dist
 
       - name: Build APK
         run: |
-          cd AimHelper
-          gradle assembleDebug --no-daemon --stacktrace
-
-      - name: Verify APK
-        run: |
-          test -f AimHelper/app/build/outputs/apk/debug/app-debug.apk
-          ls -lh AimHelper/app/build/outputs/apk/debug/app-debug.apk
+          cd AimTrainer
+          ./gradle-dist/bin/gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AimHelper-v2.3
-          path: AimHelper/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+          name: AimTrainer-APK
+          path: AimTrainer/app/build/outputs/apk/debug/app-debug.apk
