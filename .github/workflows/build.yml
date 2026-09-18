@@ -41,8 +41,8 @@ jobs:
                   applicationId 'com.aimhelper.overlay'
                   minSdk 23
                   targetSdk 35
-                  versionCode 4
-                  versionName '1.3'
+                  versionCode 5
+                  versionName '1.4'
               }
           }
           EOF
@@ -59,6 +59,9 @@ jobs:
 
               <uses-permission
                   android:name="android.permission.FOREGROUND_SERVICE" />
+
+              <uses-permission
+                  android:name="android.permission.POST_NOTIFICATIONS" />
 
               <application
                   android:theme="@style/AppTheme"
@@ -79,7 +82,8 @@ jobs:
 
                   <service
                       android:name=".OverlayService"
-                      android:exported="false" />
+                      android:exported="false"
+                      android:stopWithTask="false" />
 
               </application>
 
@@ -179,29 +183,31 @@ jobs:
                       new TextView(this);
 
                   info.setText(
-                      "⚪ Geser titik bola\n" +
-                      "🎯 Geser titik arah bidikan\n" +
-                      "Tekan panel untuk mengganti 1–3 pantulan."
+                      "Cara pakai:\n" +
+                      "1. Buka 8 Ball Pool terlebih dahulu.\n" +
+                      "2. Kembali ke Aim Helper.\n" +
+                      "3. Tekan Nyalakan Mistar.\n" +
+                      "4. Kembali ke permainan."
                   );
 
                   info.setTextColor(
                       Color.rgb(205,220,228)
                   );
 
-                  info.setTextSize(17);
+                  info.setTextSize(16);
 
                   info.setPadding(
                       dp(5),
-                      dp(15),
+                      dp(10),
                       dp(5),
-                      dp(20)
+                      dp(15)
                   );
 
                   root.addView(
                       info,
                       new LinearLayout.LayoutParams(
                           -1,
-                          dp(125)
+                          dp(145)
                       )
                   );
 
@@ -242,7 +248,7 @@ jobs:
                       new Button(this);
 
                   start.setText(
-                      "2. Nyalakan Mistar Manual"
+                      "2. Nyalakan Mistar"
                   );
 
                   start.setOnClickListener(
@@ -272,6 +278,12 @@ jobs:
 
                               startService(intent);
                           }
+
+                          /*
+                           * Tutup Activity supaya tidak
+                           * menutupi permainan.
+                           */
+                          moveTaskToBack(true);
                       }
                   );
 
@@ -308,7 +320,7 @@ jobs:
                       new TextView(this);
 
                   note.setText(
-                      "Panduan visual saja. " +
+                      "Panduan visual saja.\n" +
                       "Tidak ada auto-click, auto-shot, " +
                       "atau pengendalian permainan."
                   );
@@ -321,7 +333,7 @@ jobs:
 
                   note.setPadding(
                       0,
-                      dp(30),
+                      dp(25),
                       0,
                       0
                   );
@@ -347,9 +359,9 @@ jobs:
 
                   p.setMargins(
                       0,
-                      dp(8),
+                      dp(7),
                       0,
-                      dp(8)
+                      dp(7)
                   );
 
                   return p;
@@ -357,7 +369,7 @@ jobs:
           }
           JAVA
 
-      - name: Configure OverlayService FIX
+      - name: Configure OverlayService
         run: |
           PROJECT="AimHelper-Native-Overlay-v1"
 
@@ -411,24 +423,11 @@ jobs:
 
               private static class DragState {
 
-                  WindowManager.LayoutParams params;
                   float downRawX;
                   float downRawY;
                   int startX;
                   int startY;
-
-                  DragState(
-                      WindowManager.LayoutParams p,
-                      float x,
-                      float y
-                  ) {
-
-                      params = p;
-                      downRawX = x;
-                      downRawY = y;
-                      startX = p.x;
-                      startY = p.y;
-                  }
+                  WindowManager.LayoutParams params;
               }
 
               @Override
@@ -448,6 +447,10 @@ jobs:
                           WINDOW_SERVICE
                       );
 
+                  /*
+                   * Overlay dibuat setelah service benar-benar
+                   * aktif. Activity sudah dipindahkan ke background.
+                   */
                   showOverlay();
               }
 
@@ -468,6 +471,9 @@ jobs:
                           .getDisplayMetrics()
                           .heightPixels;
 
+                  /*
+                   * Posisi meja dibuat relatif terhadap layar.
+                   */
                   tableL = w * 0.17f;
                   tableR = w * 0.86f;
                   tableT = h * 0.16f;
@@ -479,14 +485,23 @@ jobs:
                   aimX = w * 0.56f;
                   aimY = h * 0.30f;
 
+                  /*
+                   * Lapisan gambar FULL SCREEN:
+                   * benar-benar tidak menerima sentuhan.
+                   * Sentuhan hanya diterima oleh handle kecil.
+                   */
                   canvas =
                       new AimCanvas(this);
 
                   WindowManager.LayoutParams drawParams =
-                      params(
+                      new WindowManager.LayoutParams(
                           -1,
                           -1,
-                          WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE |
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                          WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                          android.graphics.PixelFormat.TRANSLUCENT
                       );
 
                   wm.addView(
@@ -494,6 +509,9 @@ jobs:
                       drawParams
                   );
 
+                  /*
+                   * Handle kecil saja yang menerima sentuhan.
+                   */
                   ballHandle =
                       createHandle("⚪");
 
@@ -514,10 +532,17 @@ jobs:
                       false
                   );
 
+                  /*
+                   * Panel informasi juga kecil dan tidak
+                   * menutupi area meja.
+                   */
                   panel =
                       new TextView(this);
 
-                  panel.setTextColor(Color.WHITE);
+                  panel.setTextColor(
+                      Color.WHITE
+                  );
+
                   panel.setTextSize(14);
 
                   panel.setTypeface(
@@ -525,19 +550,21 @@ jobs:
                       Typeface.BOLD
                   );
 
-                  panel.setGravity(Gravity.CENTER);
+                  panel.setGravity(
+                      Gravity.CENTER
+                  );
 
                   panel.setPadding(
-                      15,
-                      10,
-                      15,
-                      10
+                      12,
+                      8,
+                      12,
+                      8
                   );
 
                   panel.setBackground(
                       box(
                           Color.argb(
-                              225,
+                              220,
                               8,
                               25,
                               35
@@ -565,18 +592,21 @@ jobs:
                   );
 
                   WindowManager.LayoutParams pp =
-                      params(
-                          320,
-                          130,
-                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                      new WindowManager.LayoutParams(
+                          250,
+                          115,
+                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                          WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                          android.graphics.PixelFormat.TRANSLUCENT
                       );
 
                   pp.gravity =
                       Gravity.TOP |
                       Gravity.END;
 
-                  pp.x = 15;
-                  pp.y = 65;
+                  pp.x = 10;
+                  pp.y = 45;
 
                   wm.addView(
                       panel,
@@ -584,21 +614,6 @@ jobs:
                   );
 
                   updateInfo();
-              }
-
-              private GradientDrawable box(
-                  int color,
-                  int stroke
-              ) {
-
-                  GradientDrawable d =
-                      new GradientDrawable();
-
-                  d.setColor(color);
-                  d.setCornerRadius(28);
-                  d.setStroke(4, stroke);
-
-                  return d;
               }
 
               private TextView createHandle(
@@ -609,13 +624,13 @@ jobs:
                       new TextView(this);
 
                   v.setText(text);
-                  v.setTextSize(27);
+                  v.setTextSize(26);
                   v.setGravity(Gravity.CENTER);
 
                   v.setBackground(
                       box(
                           Color.argb(
-                              205,
+                              200,
                               15,
                               35,
                               45
@@ -631,20 +646,19 @@ jobs:
                   return v;
               }
 
-              private WindowManager.LayoutParams params(
-                  int width,
-                  int height,
-                  int flags
+              private GradientDrawable box(
+                  int fill,
+                  int stroke
               ) {
 
-                  return new WindowManager.LayoutParams(
-                      width,
-                      height,
-                      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                      flags |
-                      WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                      android.graphics.PixelFormat.TRANSLUCENT
-                  );
+                  GradientDrawable d =
+                      new GradientDrawable();
+
+                  d.setColor(fill);
+                  d.setCornerRadius(25);
+                  d.setStroke(4, stroke);
+
+                  return d;
               }
 
               private void addHandle(
@@ -655,10 +669,13 @@ jobs:
               ) {
 
                   WindowManager.LayoutParams lp =
-                      params(
+                      new WindowManager.LayoutParams(
                           72,
                           72,
-                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                          WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                          WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                          android.graphics.PixelFormat.TRANSLUCENT
                       );
 
                   lp.gravity =
@@ -669,11 +686,9 @@ jobs:
                   lp.y = (int)y - 36;
 
                   DragState state =
-                      new DragState(
-                          lp,
-                          0,
-                          0
-                      );
+                      new DragState();
+
+                  state.params = lp;
 
                   view.setTag(state);
 
@@ -727,6 +742,38 @@ jobs:
                                       s.downRawY
                                   );
 
+                              /*
+                               * Batasi handle supaya tidak
+                               * keluar dari layar.
+                               */
+                              int screenW =
+                                  getResources()
+                                      .getDisplayMetrics()
+                                      .widthPixels;
+
+                              int screenH =
+                                  getResources()
+                                      .getDisplayMetrics()
+                                      .heightPixels;
+
+                              newX =
+                                  Math.max(
+                                      0,
+                                      Math.min(
+                                          newX,
+                                          screenW - 72
+                                      )
+                                  );
+
+                              newY =
+                                  Math.max(
+                                      0,
+                                      Math.min(
+                                          newY,
+                                          screenH - 72
+                                      )
+                                  );
+
                               s.params.x = newX;
                               s.params.y = newY;
 
@@ -735,26 +782,28 @@ jobs:
                                   s.params
                               );
 
-                              float centerX =
+                              float cx =
                                   newX + 36;
 
-                              float centerY =
+                              float cy =
                                   newY + 36;
 
                               if (isBall) {
 
-                                  ballX = centerX;
-                                  ballY = centerY;
+                                  ballX = cx;
+                                  ballY = cy;
 
                               } else {
 
-                                  aimX = centerX;
-                                  aimY = centerY;
+                                  aimX = cx;
+                                  aimY = cy;
                               }
 
                               updateInfo();
 
-                              canvas.invalidate();
+                              if (canvas != null) {
+                                  canvas.invalidate();
+                              }
 
                               return true;
                           }
@@ -804,10 +853,10 @@ jobs:
                           "%.1f°",
                           angle
                       ) +
-                      "\nJarak: " +
-                      (int)distance +
-                      " • Pantulan: " +
-                      bounceCount
+                      "\nPantulan: " +
+                      bounceCount +
+                      " • Jarak: " +
+                      (int)distance
                   );
               }
 
@@ -821,10 +870,10 @@ jobs:
                   float best =
                       Float.MAX_VALUE;
 
-                  float hitX =
+                  float hx =
                       x + dx * 10000;
 
-                  float hitY =
+                  float hy =
                       y + dy * 10000;
 
                   if (dx > 0) {
@@ -835,8 +884,8 @@ jobs:
                       if (t > 0 && t < best) {
 
                           best = t;
-                          hitX = x + dx * t;
-                          hitY = y + dy * t;
+                          hx = x + dx * t;
+                          hy = y + dy * t;
                       }
                   }
 
@@ -848,8 +897,8 @@ jobs:
                       if (t > 0 && t < best) {
 
                           best = t;
-                          hitX = x + dx * t;
-                          hitY = y + dy * t;
+                          hx = x + dx * t;
+                          hy = y + dy * t;
                       }
                   }
 
@@ -861,8 +910,8 @@ jobs:
                       if (t > 0 && t < best) {
 
                           best = t;
-                          hitX = x + dx * t;
-                          hitY = y + dy * t;
+                          hx = x + dx * t;
+                          hy = y + dy * t;
                       }
                   }
 
@@ -874,14 +923,14 @@ jobs:
                       if (t > 0 && t < best) {
 
                           best = t;
-                          hitX = x + dx * t;
-                          hitY = y + dy * t;
+                          hx = x + dx * t;
+                          hy = y + dy * t;
                       }
                   }
 
                   return new float[]{
-                      hitX,
-                      hitY
+                      hx,
+                      hy
                   };
               }
 
@@ -897,29 +946,29 @@ jobs:
                   float dx = x2 - x1;
                   float dy = y2 - y1;
 
-                  float length =
+                  float len =
                       (float)Math.hypot(
                           dx,
                           dy
                       );
 
-                  if (length < 1) {
+                  if (len < 1) {
                       return;
                   }
 
-                  float ux = dx / length;
-                  float uy = dy / length;
+                  float ux = dx / len;
+                  float uy = dy / len;
 
                   for (
                       float d = 0;
-                      d < length;
+                      d < len;
                       d += 28
                   ) {
 
                       float e =
                           Math.min(
-                              d + 15,
-                              length
+                              d + 14,
+                              len
                           );
 
                       c.drawLine(
@@ -961,24 +1010,24 @@ jobs:
                       float dy =
                           aimY - ballY;
 
-                      float length =
+                      float len =
                           (float)Math.hypot(
                               dx,
                               dy
                           );
 
-                      if (length < 2) {
+                      if (len < 2) {
                           return;
                       }
 
-                      dx /= length;
-                      dy /= length;
+                      dx /= len;
+                      dy /= len;
 
                       paint.setStyle(
                           Paint.Style.STROKE
                       );
 
-                      paint.setStrokeWidth(6);
+                      paint.setStrokeWidth(5);
 
                       paint.setColor(
                           Color.rgb(
@@ -1043,7 +1092,7 @@ jobs:
                               paint
                           );
 
-                          boolean verticalWall =
+                          boolean vertical =
                               Math.abs(
                                   hit[0] - tableL
                               ) < 5 ||
@@ -1054,12 +1103,14 @@ jobs:
                           x = hit[0];
                           y = hit[1];
 
-                          if (verticalWall) {
+                          if (vertical) {
                               dx = -dx;
                           } else {
                               dy = -dy;
                           }
                       }
+
+                      paint.setStrokeWidth(4);
 
                       paint.setColor(
                           Color.rgb(
@@ -1068,8 +1119,6 @@ jobs:
                               120
                           )
                       );
-
-                      paint.setStrokeWidth(4);
 
                       c.drawCircle(
                           ballX,
@@ -1089,7 +1138,7 @@ jobs:
                           Paint.Style.FILL
                       );
 
-                      paint.setTextSize(23);
+                      paint.setTextSize(22);
 
                       paint.setColor(
                           Color.WHITE
@@ -1186,7 +1235,7 @@ jobs:
           }
           JAVA
 
-      - name: Verify files
+      - name: Verify project
         run: |
           PROJECT="AimHelper-Native-Overlay-v1"
 
@@ -1196,7 +1245,7 @@ jobs:
           test -f "$PROJECT/app/src/main/java/com/aimhelper/overlay/MainActivity.java"
           test -f "$PROJECT/app/src/main/java/com/aimhelper/overlay/OverlayService.java"
 
-          echo "AIM HELPER MANUAL RULER FIX OK"
+          echo "AIM HELPER OVERLAY FIX OK"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -1217,5 +1266,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AimHelper-APK-Manual-Ruler-FIX
+          name: AimHelper-APK-Manual-Ruler-FIX2
           path: AimHelper-Native-Overlay-v1/app/build/outputs/apk/debug/*.apk
