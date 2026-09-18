@@ -56,4 +56,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AimHelper-APK-Stage2
-          path: AimHelper-Native-Overlay-v1/app/build/outputs/apk/debug/*.apk
+          path: AimHelper-Native-Overlay-v1/app/build/outputs/apk/debug/*.apk0
